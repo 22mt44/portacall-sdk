@@ -1,7 +1,5 @@
 import { PortacallError, type PortacallErrorPayload } from "./errors";
-import { createPortacallExpress } from "./express";
 import { handlePortacallRequest } from "./handler";
-import { createPortacallHono } from "./hono";
 import type { Portacall, PortacallOptions } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.portacall.ai";
@@ -13,40 +11,35 @@ type ChatResponse = {
 export function portacall(options: PortacallOptions): Portacall {
 	const configured =
 		options.agentId.trim().length > 0 && options.secretKey.trim().length > 0;
+	const chat = async (message: string): Promise<string> => {
+		const response = await requestAgent(options, "/chat", message);
 
-	const agent: Portacall = {
-		async chat(message: string): Promise<string> {
-			const response = await requestAgent(options, "/chat", message);
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
 
-			if (!response.ok) {
-				throw await createRequestError(response, "Portacall request failed.");
-			}
+		const payload = (await response.json()) as ChatResponse;
+		return payload.content;
+	};
+	const stream = (message: string): AsyncIterable<string> =>
+		streamAgentResponse(options, message);
 
-			const payload = (await response.json()) as ChatResponse;
-			return payload.content;
-		},
+	return {
+		chat,
 		stream(message: string): AsyncIterable<string> {
-			return streamAgentResponse(options, message);
+			return stream(message);
 		},
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
 					configured,
-					chat: (message) => agent.chat(message),
+					chat,
 					openStream: (message) => openStream(options, message),
 				},
 				request,
 			);
 		},
-		hono() {
-			return createPortacallHono(agent);
-		},
-		express() {
-			return createPortacallExpress(agent);
-		},
 	};
-
-	return agent;
 }
 
 function createAgentURL(options: PortacallOptions, path: string): string {

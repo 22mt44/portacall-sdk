@@ -38,9 +38,11 @@ const content = await agent.chat("Hello");
 ## Hono
 
 Mount the SDK directly when you want to avoid writing route-level request handling yourself.
+Install `hono` in your app when you use this adapter. The core `@portacall/sdk` package does not install it for you.
 
 ```ts
 import { portacall } from "@portacall/sdk";
+import { createPortacallHono } from "@portacall/sdk/hono";
 import { Hono } from "hono";
 
 const app = new Hono();
@@ -50,7 +52,7 @@ const agent = portacall({
   secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
 });
 
-app.route("/api/agent", agent.hono());
+app.route("/api/agent", createPortacallHono(agent));
 ```
 
 ## Express
@@ -60,6 +62,7 @@ Use the Express adapter when you want a Better Auth style mount point.
 ```ts
 import express from "express";
 import { portacall } from "@portacall/sdk";
+import { createPortacallExpress } from "@portacall/sdk/express";
 
 const app = express();
 
@@ -68,7 +71,7 @@ const agent = portacall({
   secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
 });
 
-app.use("/api/agent", agent.express());
+app.use("/api/agent", createPortacallExpress(agent));
 ```
 
 ## Streaming

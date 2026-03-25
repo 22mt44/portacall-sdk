@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { createPortacallExpress } from "./express";
+import { createPortacallHono } from "./hono";
 import { portacall } from "./portacall";
 
 describe("portacall", () => {
@@ -216,7 +218,7 @@ describe("portacall", () => {
 				}),
 		});
 
-		const response = await agent.hono().request("/health");
+		const response = await createPortacallHono(agent).request("/health");
 
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
@@ -266,7 +268,7 @@ describe("portacall", () => {
 			},
 		};
 
-		await agent.express()(
+		await createPortacallExpress(agent)(
 			{
 				method: "POST",
 				originalUrl: "/api/agent/chat",

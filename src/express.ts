@@ -1,5 +1,3 @@
-import type { PortacallExpressHandler } from "./types";
-
 type ExpressRequestLike = {
 	body?: unknown;
 	headers?: Record<string, string | string[] | undefined>;
@@ -22,6 +20,12 @@ type ExpressResponseLike = {
 type PortacallRequestHandler = {
 	handler(request: Request): Promise<Response>;
 };
+
+export type PortacallExpressHandler = (
+	request: unknown,
+	response: unknown,
+	next?: (error?: unknown) => void,
+) => Promise<void>;
 
 export function createPortacallExpress(
 	agent: PortacallRequestHandler,
