@@ -78,6 +78,56 @@ describe("portacall", () => {
 		}
 	});
 
+	test("handler returns health status", async () => {
+		const agent = portacall({
+			agentId: "",
+			secretKey: "",
+			fetch: async () =>
+				new Response(JSON.stringify({ content: "unused" }), {
+					status: 200,
+					headers: { "content-type": "application/json; charset=utf-8" },
+				}),
+		});
+
+		const response = await agent.handler(
+			new Request("https://example.com/api/agent/health"),
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			ok: true,
+			configured: false,
+		});
+	});
+
+	test("handler returns chat response", async () => {
+		const agent = portacall({
+			agentId: "agent_123",
+			secretKey: "sk_test_123",
+			baseURL: "https://example.com",
+			fetch: async () =>
+				new Response(JSON.stringify({ content: "Handled by SDK" }), {
+					status: 200,
+					headers: { "content-type": "application/json; charset=utf-8" },
+				}),
+		});
+
+		const response = await agent.handler(
+			new Request("https://example.com/api/agent/chat", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json; charset=utf-8",
+				},
+				body: JSON.stringify({ message: "Hello from handler" }),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			content: "Handled by SDK",
+		});
+	});
+
 	test("stream sends a request and yields chunks", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
@@ -153,5 +203,25 @@ describe("portacall", () => {
 				code: "stream_unavailable",
 			});
 		}
+	});
+
+	test("hono adapter exposes health route", async () => {
+		const agent = portacall({
+			agentId: "agent_123",
+			secretKey: "sk_test_123",
+			fetch: async () =>
+				new Response(JSON.stringify({ content: "unused" }), {
+					status: 200,
+					headers: { "content-type": "application/json; charset=utf-8" },
+				}),
+		});
+
+		const response = await agent.hono().request("/health");
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			ok: true,
+			configured: true,
+		});
 	});
 });

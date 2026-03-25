@@ -1,4 +1,6 @@
 import { PortacallError, type PortacallErrorPayload } from "./errors";
+import { handlePortacallRequest } from "./handler";
+import { createPortacallHono } from "./hono";
 import type { Portacall, PortacallOptions } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.portacall.ai";
@@ -8,7 +10,10 @@ type ChatResponse = {
 };
 
 export function portacall(options: PortacallOptions): Portacall {
-	return {
+	const configured =
+		options.agentId.trim().length > 0 && options.secretKey.trim().length > 0;
+
+	const agent: Portacall = {
 		async chat(message: string): Promise<string> {
 			const response = await requestAgent(options, "/chat", message);
 
@@ -22,7 +27,22 @@ export function portacall(options: PortacallOptions): Portacall {
 		stream(message: string): AsyncIterable<string> {
 			return streamAgentResponse(options, message);
 		},
+		handler(request: Request): Promise<Response> {
+			return handlePortacallRequest(
+				{
+					configured,
+					chat: (message) => agent.chat(message),
+					openStream: (message) => openStream(options, message),
+				},
+				request,
+			);
+		},
+		hono() {
+			return createPortacallHono(agent);
+		},
 	};
+
+	return agent;
 }
 
 function createAgentURL(options: PortacallOptions, path: string): string {
@@ -58,6 +78,13 @@ async function* streamAgentResponse(
 	options: PortacallOptions,
 	message: string,
 ): AsyncIterable<string> {
+	yield* readTextStream(await openStream(options, message));
+}
+
+async function openStream(
+	options: PortacallOptions,
+	message: string,
+): Promise<ReadableStream<Uint8Array>> {
 	const response = await requestAgent(options, "/stream", message);
 
 	if (!response.ok) {
@@ -65,10 +92,10 @@ async function* streamAgentResponse(
 	}
 
 	if (!response.body) {
-		return;
+		throw new Error("Portacall stream body is empty.");
 	}
 
-	yield* readTextStream(response.body);
+	return response.body;
 }
 
 async function* readTextStream(

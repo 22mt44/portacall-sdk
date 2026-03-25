@@ -35,6 +35,24 @@ const agent = portacall({
 const content = await agent.chat("Hello");
 ```
 
+## Hono
+
+Mount the SDK directly when you want to avoid writing route-level request handling yourself.
+
+```ts
+import { portacall } from "@portacall/sdk";
+import { Hono } from "hono";
+
+const app = new Hono();
+
+const agent = portacall({
+  agentId: process.env.PORTACALL_AGENT_ID ?? "",
+  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
+});
+
+app.route("/api/agent", agent.hono());
+```
+
 ## Streaming
 
 Use `stream()` when you want chunks as they arrive.

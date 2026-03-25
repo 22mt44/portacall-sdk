@@ -1,3 +1,5 @@
+import type { Hono } from "hono";
+
 export type PortacallFetch = (
 	input: RequestInfo | URL,
 	init?: RequestInit,
@@ -14,4 +16,6 @@ export type PortacallOptions = {
 export type Portacall = {
 	chat(message: string): Promise<string>;
 	stream(message: string): AsyncIterable<string>;
+	handler(request: Request): Promise<Response>;
+	hono(): Hono;
 };
