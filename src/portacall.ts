@@ -1,5 +1,5 @@
-import { PortacallError, type PortacallErrorPayload } from "./errors";
 import { handlePortacallRequest } from "./handler";
+import { createRequestError, normalizeMessage, readTextStream } from "./shared";
 import type { Portacall, PortacallOptions } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.portacall.ai";
@@ -54,11 +54,6 @@ async function requestAgent(
 	path: string,
 	message: string,
 ): Promise<Response> {
-	const trimmedMessage = message.trim();
-	if (!trimmedMessage) {
-		throw new Error("Message is required.");
-	}
-
 	const fetchImpl = options.fetch ?? globalThis.fetch;
 	return fetchImpl(createAgentURL(options, path), {
 		method: "POST",
@@ -67,7 +62,7 @@ async function requestAgent(
 			authorization: `Bearer ${options.secretKey}`,
 			...options.headers,
 		},
-		body: JSON.stringify({ message: trimmedMessage }),
+		body: JSON.stringify({ message: normalizeMessage(message) }),
 	});
 }
 
@@ -93,52 +88,4 @@ async function openStream(
 	}
 
 	return response.body;
-}
-
-async function* readTextStream(
-	stream: ReadableStream<Uint8Array>,
-): AsyncIterable<string> {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) {
-				const finalChunk = decoder.decode();
-				if (finalChunk) {
-					yield finalChunk;
-				}
-
-				return;
-			}
-
-			const chunk = decoder.decode(value, { stream: true });
-			if (chunk) {
-				yield chunk;
-			}
-		}
-	} finally {
-		reader.releaseLock();
-	}
-}
-
-async function createRequestError(
-	response: Response,
-	fallbackMessage: string,
-): Promise<PortacallError> {
-	const text = await response.text();
-	if (!text) {
-		return new PortacallError(fallbackMessage, { status: response.status });
-	}
-
-	try {
-		const payload = JSON.parse(text) as PortacallErrorPayload;
-		return new PortacallError(payload.message ?? fallbackMessage, {
-			status: response.status,
-			code: payload.code,
-		});
-	} catch {
-		return new PortacallError(text, { status: response.status });
-	}
 }

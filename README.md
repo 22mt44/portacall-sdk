@@ -1,6 +1,6 @@
 # portacall
 
-Minimal server-side SDK for calling a Portacall agent.
+Minimal SDK for Portacall server and browser integrations.
 
 ## Install
 
@@ -33,6 +33,27 @@ const agent = portacall({
 });
 
 const content = await agent.chat("Hello");
+```
+
+## Browser
+
+Use the browser entrypoint when your frontend should call your own backend route such as `/api/agent`.
+This entrypoint never accepts `secretKey`.
+
+```ts
+import { portacall } from "@portacall/sdk/client";
+
+export const agent = portacall({
+  baseURL: "http://localhost:4000/api/agent",
+});
+```
+
+```ts
+const content = await agent.chat("Hello");
+
+for await (const chunk of agent.stream("Write a short welcome message")) {
+  console.log(chunk);
+}
 ```
 
 ## Hono
