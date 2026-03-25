@@ -1,5 +1,5 @@
 {
-	"name": "portacall",
+	"name": "@portacall/sdk",
 	"version": "0.1.0",
 	"description": "Minimal server-side SDK for calling a Portacall agent.",
 	"license": "MIT",
@@ -45,8 +45,13 @@
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check src package.json tsconfig.json README.md .github/workflows/ci.yml",
 		"check": "bun run test && bun run typecheck && bun run lint",
+		"release:dry": "npm publish --dry-run",
+		"release": "npm publish",
 		"prepack": "bun run build",
 		"prepublishOnly": "bun run check && bun run build"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.8",

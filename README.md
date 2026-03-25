@@ -5,19 +5,19 @@ Minimal server-side SDK for calling a Portacall agent.
 ## Install
 
 ```bash
-bun add portacall
+bun add @portacall/sdk
 ```
 
 ```bash
-npm install portacall
+npm install @portacall/sdk
 ```
 
 ```bash
-pnpm add portacall
+pnpm add @portacall/sdk
 ```
 
 ```bash
-yarn add portacall
+yarn add @portacall/sdk
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ yarn add portacall
 Use the SDK on your backend only. `secretKey` must never be exposed to the browser.
 
 ```ts
-import { portacall } from "portacall";
+import { portacall } from "@portacall/sdk";
 
 const agent = portacall({
   agentId: process.env.PORTACALL_AGENT_ID ?? "",
@@ -40,7 +40,7 @@ const content = await agent.chat("Hello");
 Use `stream()` when you want chunks as they arrive.
 
 ```ts
-import { portacall } from "portacall";
+import { portacall } from "@portacall/sdk";
 
 const agent = portacall({
   agentId: process.env.PORTACALL_AGENT_ID ?? "",
@@ -58,7 +58,7 @@ for await (const chunk of agent.stream("Write a short welcome message")) {
 ## Error handling
 
 ```ts
-import { portacall, PortacallError } from "portacall";
+import { portacall, PortacallError } from "@portacall/sdk";
 
 const agent = portacall({
   agentId: process.env.PORTACALL_AGENT_ID ?? "",
@@ -82,7 +82,7 @@ try {
 By default, the SDK sends requests to `https://api.portacall.ai`.
 
 ```ts
-import { portacall } from "portacall";
+import { portacall } from "@portacall/sdk";
 
 const agent = portacall({
   agentId: process.env.PORTACALL_AGENT_ID ?? "",
@@ -91,4 +91,32 @@ const agent = portacall({
 });
 
 const content = await agent.chat("Hello from local development");
+```
+
+## Publishing
+
+For the first publish:
+
+```bash
+npm login
+npm whoami
+bun run release:dry
+bun run release
+```
+
+This package is org-scoped, so publishes go out as a public package under `@portacall/sdk`.
+
+For later releases, bump the version first:
+
+```bash
+npm version patch
+git push --follow-tags
+bun run release
+```
+
+`release:dry` and `release` automatically trigger `prepublishOnly`, which runs:
+
+```bash
+bun run check
+bun run build
 ```
