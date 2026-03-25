@@ -18,4 +18,11 @@ export type Portacall = {
 	stream(message: string): AsyncIterable<string>;
 	handler(request: Request): Promise<Response>;
 	hono(): Hono;
+	express(): PortacallExpressHandler;
 };
+
+export type PortacallExpressHandler = (
+	request: unknown,
+	response: unknown,
+	next?: (error?: unknown) => void,
+) => Promise<void>;

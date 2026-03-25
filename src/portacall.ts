@@ -1,4 +1,5 @@
 import { PortacallError, type PortacallErrorPayload } from "./errors";
+import { createPortacallExpress } from "./express";
 import { handlePortacallRequest } from "./handler";
 import { createPortacallHono } from "./hono";
 import type { Portacall, PortacallOptions } from "./types";
@@ -39,6 +40,9 @@ export function portacall(options: PortacallOptions): Portacall {
 		},
 		hono() {
 			return createPortacallHono(agent);
+		},
+		express() {
+			return createPortacallExpress(agent);
 		},
 	};
 

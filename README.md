@@ -53,6 +53,24 @@ const agent = portacall({
 app.route("/api/agent", agent.hono());
 ```
 
+## Express
+
+Use the Express adapter when you want a Better Auth style mount point.
+
+```ts
+import express from "express";
+import { portacall } from "@portacall/sdk";
+
+const app = express();
+
+const agent = portacall({
+  agentId: process.env.PORTACALL_AGENT_ID ?? "",
+  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
+});
+
+app.use("/api/agent", agent.express());
+```
+
 ## Streaming
 
 Use `stream()` when you want chunks as they arrive.

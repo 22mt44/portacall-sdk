@@ -224,4 +224,68 @@ describe("portacall", () => {
 			configured: true,
 		});
 	});
+
+	test("express adapter handles chat route", async () => {
+		const agent = portacall({
+			agentId: "agent_123",
+			secretKey: "sk_test_123",
+			baseURL: "https://example.com",
+			fetch: async () =>
+				new Response(
+					JSON.stringify({ content: "Handled by Express adapter" }),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				),
+		});
+
+		const chunks: Uint8Array[] = [];
+		let statusCode = 200;
+		const headers = new Map<string, string | readonly string[]>();
+		const response = {
+			status(code: number) {
+				statusCode = code;
+				return response;
+			},
+			setHeader(name: string, value: string | readonly string[]) {
+				headers.set(name, value);
+				return response;
+			},
+			write(chunk: string | Uint8Array) {
+				chunks.push(
+					typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk,
+				);
+				return true;
+			},
+			end(chunk?: string | Uint8Array) {
+				if (chunk) {
+					response.write(chunk);
+				}
+				return response;
+			},
+		};
+
+		await agent.express()(
+			{
+				method: "POST",
+				originalUrl: "/api/agent/chat",
+				headers: {
+					host: "example.com",
+					"content-type": "application/json; charset=utf-8",
+				},
+				body: { message: "Hello from express" },
+			},
+			response,
+		);
+
+		const decoder = new TextDecoder();
+		const body = chunks.map((chunk) => decoder.decode(chunk)).join("");
+
+		expect(statusCode).toBe(200);
+		expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
+		expect(JSON.parse(body)).toEqual({
+			content: "Handled by Express adapter",
+		});
+	});
 });
