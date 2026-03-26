@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createPortacallExpress } from "./express";
-import { createPortacallHono } from "./hono";
+import { createPortacallExpress } from "./adapters/express";
 import { portacall } from "./portacall";
 
 describe("portacall proxy", () => {
@@ -143,27 +142,6 @@ describe("portacall proxy", () => {
 			"text/plain; charset=utf-8",
 		);
 		expect(await response.text()).toBe("Hello from stream");
-	});
-
-	test("hono adapter exposes health route", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
-			fetch: async () =>
-				new Response(JSON.stringify({ content: "unused" }), {
-					status: 200,
-					headers: { "content-type": "application/json; charset=utf-8" },
-				}),
-		});
-
-		const response =
-			await createPortacallHono(agent).request("/agent_123/health");
-
-		expect(response.status).toBe(200);
-		await expect(response.json()).resolves.toEqual({
-			ok: true,
-			configured: true,
-		});
 	});
 
 	test("express adapter handles chat route", async () => {

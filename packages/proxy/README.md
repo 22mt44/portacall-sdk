@@ -37,6 +37,5 @@ app.all("/api/agent/*", (c) => agent.handler(c.req.raw));
 ## Adapters
 
 ```ts
-import { createPortacallHono } from "@portacall/proxy/hono";
-import { createPortacallExpress } from "@portacall/proxy/express";
+import { createPortacallExpress } from "@portacall/proxy/adapters/express";
 ```

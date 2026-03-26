@@ -33,15 +33,10 @@
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs"
 		},
-		"./hono": {
-			"types": "./dist/hono.d.ts",
-			"import": "./dist/hono.mjs",
-			"require": "./dist/hono.cjs"
-		},
-		"./express": {
-			"types": "./dist/express.d.ts",
-			"import": "./dist/express.mjs",
-			"require": "./dist/express.cjs"
+		"./adapters/express": {
+			"types": "./dist/adapters/express.d.ts",
+			"import": "./dist/adapters/express.mjs",
+			"require": "./dist/adapters/express.cjs"
 		}
 	},
 	"files": [
@@ -60,13 +55,5 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	},
-	"peerDependencies": {
-		"hono": "^4.12.9"
-	},
-	"peerDependenciesMeta": {
-		"hono": {
-			"optional": true
-		}
 	}
 }

@@ -5,7 +5,7 @@ Monorepo for the published Portacall SDK packages.
 ## Packages
 
 - `@portacall/client`: frontend SDK that sends requests to your backend route.
-- `@portacall/proxy`: backend SDK that exposes `agent.handler()` plus optional Hono and Express adapters.
+- `@portacall/proxy`: backend SDK that exposes `agent.handler()` plus an optional Express adapter.
 
 `secretKey` must never be exposed to the browser.
 
