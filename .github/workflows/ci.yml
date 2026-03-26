@@ -31,5 +31,5 @@ jobs:
       - name: Run lint
         run: bun run lint
 
-      - name: Build package
+      - name: Build packages
         run: bun run build

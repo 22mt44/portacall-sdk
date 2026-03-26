@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { portacall } from "./client";
+import { portacall } from "./index";
 
 describe("portacall client", () => {
 	test("health reads backend health status", async () => {
