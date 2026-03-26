@@ -1,5 +1,5 @@
 import { handlePortacallRequest } from "./handler";
-import { createRequestError, normalizeMessage, readTextStream } from "./shared";
+import { createRequestError, normalizeMessage } from "./shared";
 import type { Portacall, PortacallOptions } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.portacall.ai";
@@ -9,10 +9,16 @@ type ChatResponse = {
 };
 
 export function portacall(options: PortacallOptions): Portacall {
-	const configured =
-		options.agentId.trim().length > 0 && options.secretKey.trim().length > 0;
+	const agentId = options.agentId.trim();
+	const secretKey = options.secretKey.trim();
+	const requestOptions = {
+		...options,
+		agentId,
+		secretKey,
+	};
+	const configured = agentId.length > 0 && secretKey.length > 0;
 	const chat = async (message: string): Promise<string> => {
-		const response = await requestAgent(options, "/chat", message);
+		const response = await requestAgent(requestOptions, "/chat", message);
 
 		if (!response.ok) {
 			throw await createRequestError(response, "Portacall request failed.");
@@ -21,20 +27,16 @@ export function portacall(options: PortacallOptions): Portacall {
 		const payload = (await response.json()) as ChatResponse;
 		return payload.content;
 	};
-	const stream = (message: string): AsyncIterable<string> =>
-		streamAgentResponse(options, message);
 
 	return {
-		chat,
-		stream(message: string): AsyncIterable<string> {
-			return stream(message);
-		},
+		agentId,
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
+					agentId,
 					configured,
 					chat,
-					openStream: (message) => openStream(options, message),
+					openStream: (message) => openStream(requestOptions, message),
 				},
 				request,
 			);
@@ -44,7 +46,7 @@ export function portacall(options: PortacallOptions): Portacall {
 
 function createAgentURL(options: PortacallOptions, path: string): string {
 	return new URL(
-		`/api/agent/${options.agentId}${path}`,
+		`/api/agent/${encodeURIComponent(options.agentId)}${path}`,
 		options.baseURL ?? DEFAULT_BASE_URL,
 	).toString();
 }
@@ -64,13 +66,6 @@ async function requestAgent(
 		},
 		body: JSON.stringify({ message: normalizeMessage(message) }),
 	});
-}
-
-async function* streamAgentResponse(
-	options: PortacallOptions,
-	message: string,
-): AsyncIterable<string> {
-	yield* readTextStream(await openStream(options, message));
 }
 
 async function openStream(

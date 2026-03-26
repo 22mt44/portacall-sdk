@@ -12,7 +12,6 @@ export type PortacallOptions = {
 };
 
 export type Portacall = {
-	chat(message: string): Promise<string>;
-	stream(message: string): AsyncIterable<string>;
+	agentId: string;
 	handler(request: Request): Promise<Response>;
 };

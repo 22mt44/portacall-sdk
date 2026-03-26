@@ -35,6 +35,11 @@
 			"import": "./dist/client.mjs",
 			"require": "./dist/client.cjs"
 		},
+		"./proxy": {
+			"types": "./dist/proxy.d.ts",
+			"import": "./dist/proxy.mjs",
+			"require": "./dist/proxy.cjs"
+		},
 		"./hono": {
 			"types": "./dist/hono.d.ts",
 			"import": "./dist/hono.mjs",

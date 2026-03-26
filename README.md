@@ -1,6 +1,6 @@
 # portacall
 
-Minimal SDK for Portacall server and browser integrations.
+Minimal SDK for Portacall frontend and backend integrations.
 
 ## Install
 
@@ -20,33 +20,32 @@ pnpm add @portacall/sdk
 yarn add @portacall/sdk
 ```
 
-## Usage
+## SDK layout
 
-Use the SDK on your backend only. `secretKey` must never be exposed to the browser.
+- `@portacall/sdk/client`: frontend SDK that calls your backend route.
+- `@portacall/sdk/proxy`: backend SDK that exposes `agent.handler()` for `/api/agent/:agentId/*`.
+- `@portacall/sdk`: root export for the same backend proxy API.
 
-```ts
-import { portacall } from "@portacall/sdk";
+`secretKey` must never be exposed to the browser.
 
-const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
+## Frontend
 
-const content = await agent.chat("Hello");
-```
-
-## Browser
-
-Use the browser entrypoint when your frontend should call your own backend route such as `/api/agent`.
-This entrypoint never accepts `secretKey`.
+Create one shared `lib/agent.ts` in your frontend and import it anywhere you need `chat()`, `stream()`, or `health()`.
 
 ```ts
 import { portacall } from "@portacall/sdk/client";
 
 export const agent = portacall({
-  baseURL: "http://localhost:4000/api/agent",
+  backendURL: "http://localhost:4000",
+  agentId: "demo-agent",
 });
 ```
+
+The client SDK sends requests to:
+
+- `GET {backendURL}/api/agent/{agentId}/health`
+- `POST {backendURL}/api/agent/{agentId}/chat`
+- `POST {backendURL}/api/agent/{agentId}/stream`
 
 ```ts
 const content = await agent.chat("Hello");
@@ -56,73 +55,66 @@ for await (const chunk of agent.stream("Write a short welcome message")) {
 }
 ```
 
-## Hono
+## Backend proxy
 
-Mount the SDK directly when you want to avoid writing route-level request handling yourself.
-Install `hono` in your app when you use this adapter. The core `@portacall/sdk` package does not install it for you.
+Create one shared `lib/agent.ts` in your backend with the agent id and secret key. This SDK exposes a single `handler()` entry point instead of frontend-style `chat()` and `stream()` methods.
 
 ```ts
-import { portacall } from "@portacall/sdk";
-import { createPortacallHono } from "@portacall/sdk/hono";
+import { portacall } from "@portacall/sdk/proxy";
+
+export const agent = portacall({
+  agentId: process.env.PORTACALL_AGENT_ID ?? "demo-agent",
+  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
+});
+```
+
+## Hono
+
+Use one wildcard route and forward the raw request to `agent.handler()`.
+
+```ts
 import { Hono } from "hono";
+import { agent } from "./lib/agent";
 
 const app = new Hono();
 
-const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
+app.all("/api/agent/*", (c) => agent.handler(c.req.raw));
+```
+
+If you prefer the adapter entrypoint, it expects `/:agentId/health`, `/:agentId/chat`, and `/:agentId/stream` under the mounted base path.
+
+```ts
+import { Hono } from "hono";
+import { createPortacallHono } from "@portacall/sdk/hono";
+import { agent } from "./lib/agent";
+
+const app = new Hono();
 
 app.route("/api/agent", createPortacallHono(agent));
 ```
 
 ## Express
 
-Use the Express adapter when you want a Better Auth style mount point.
+Use the Express adapter when you want to mount the proxy under `/api/agent`.
 
 ```ts
 import express from "express";
-import { portacall } from "@portacall/sdk";
 import { createPortacallExpress } from "@portacall/sdk/express";
+import { agent } from "./lib/agent";
 
 const app = express();
 
-const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
-
 app.use("/api/agent", createPortacallExpress(agent));
-```
-
-## Streaming
-
-Use `stream()` when you want chunks as they arrive.
-
-```ts
-import { portacall } from "@portacall/sdk";
-
-const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
-
-let content = "";
-
-for await (const chunk of agent.stream("Write a short welcome message")) {
-  content += chunk;
-  process.stdout.write(chunk);
-}
 ```
 
 ## Error handling
 
 ```ts
-import { portacall, PortacallError } from "@portacall/sdk";
+import { portacall, PortacallError } from "@portacall/sdk/client";
 
 const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
+  backendURL: "http://localhost:4000",
+  agentId: "demo-agent",
 });
 
 try {
@@ -137,20 +129,18 @@ try {
 }
 ```
 
-## Custom API URL
+## Custom upstream API URL
 
-By default, the SDK sends requests to `https://api.portacall.ai`.
+The backend proxy talks to `https://api.portacall.ai` by default. Override `baseURL` only on the backend proxy when you need a custom Portacall API origin.
 
 ```ts
-import { portacall } from "@portacall/sdk";
+import { portacall } from "@portacall/sdk/proxy";
 
 const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "",
+  agentId: process.env.PORTACALL_AGENT_ID ?? "demo-agent",
   secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
   baseURL: "http://localhost:3000",
 });
-
-const content = await agent.chat("Hello from local development");
 ```
 
 ## Publishing

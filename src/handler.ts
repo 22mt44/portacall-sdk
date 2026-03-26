@@ -1,4 +1,5 @@
 type PortacallHandlerAgent = {
+	agentId: string;
 	configured: boolean;
 	chat(message: string): Promise<string>;
 	openStream(message: string): Promise<ReadableStream<Uint8Array>>;
@@ -15,15 +16,19 @@ export async function handlePortacallRequest(
 	request: Request,
 ): Promise<Response> {
 	const url = new URL(request.url);
-	const pathname = trimTrailingSlash(url.pathname);
+	const route = matchRoute(trimTrailingSlash(url.pathname));
 
-	if (pathname.endsWith("/health")) {
+	if (!route || route.agentId !== agent.agentId) {
+		return json({ message: "Not found." }, 404);
+	}
+
+	if (route.action === "health") {
 		return request.method === "GET"
 			? json({ ok: true, configured: agent.configured })
 			: methodNotAllowed("GET");
 	}
 
-	if (pathname.endsWith("/chat")) {
+	if (route.action === "chat") {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
@@ -45,7 +50,7 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (pathname.endsWith("/stream")) {
+	if (route.action === "stream") {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
@@ -119,6 +124,34 @@ function trimTrailingSlash(pathname: string): string {
 	return pathname.length > 1 && pathname.endsWith("/")
 		? pathname.slice(0, -1)
 		: pathname;
+}
+
+function matchRoute(
+	pathname: string,
+): { agentId: string; action: "health" | "chat" | "stream" } | null {
+	const segments = pathname.split("/").filter(Boolean);
+	if (segments.length < 2) {
+		return null;
+	}
+
+	const action = segments[segments.length - 1];
+	if (action !== "health" && action !== "chat" && action !== "stream") {
+		return null;
+	}
+
+	const encodedAgentId = segments[segments.length - 2];
+	if (!encodedAgentId) {
+		return null;
+	}
+
+	try {
+		return {
+			agentId: decodeURIComponent(encodedAgentId),
+			action,
+		};
+	} catch {
+		return null;
+	}
 }
 
 function json(payload: unknown, status = 200): Response {

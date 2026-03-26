@@ -3,8 +3,51 @@ import { createPortacallExpress } from "./express";
 import { createPortacallHono } from "./hono";
 import { portacall } from "./portacall";
 
-describe("portacall", () => {
-	test("chat sends a request and returns content", async () => {
+describe("portacall proxy", () => {
+	test("handler returns health status", async () => {
+		const agent = portacall({
+			agentId: "agent_123",
+			secretKey: "",
+			fetch: async () =>
+				new Response(JSON.stringify({ content: "unused" }), {
+					status: 200,
+					headers: { "content-type": "application/json; charset=utf-8" },
+				}),
+		});
+
+		const response = await agent.handler(
+			new Request("https://example.com/api/agent/agent_123/health"),
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			ok: true,
+			configured: false,
+		});
+	});
+
+	test("handler returns not found for a different agent id", async () => {
+		const agent = portacall({
+			agentId: "agent_123",
+			secretKey: "sk_test_123",
+			fetch: async () =>
+				new Response(JSON.stringify({ content: "unused" }), {
+					status: 200,
+					headers: { "content-type": "application/json; charset=utf-8" },
+				}),
+		});
+
+		const response = await agent.handler(
+			new Request("https://example.com/api/agent/agent_999/health"),
+		);
+
+		expect(response.status).toBe(404);
+		await expect(response.json()).resolves.toEqual({
+			message: "Not found.",
+		});
+	});
+
+	test("handler proxies chat requests to the Portacall API", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 
@@ -16,106 +59,15 @@ describe("portacall", () => {
 				receivedURL = String(input);
 				receivedInit = init;
 
-				return new Response(JSON.stringify({ content: "Hello from agent" }), {
+				return new Response(JSON.stringify({ content: "Handled by SDK" }), {
 					status: 200,
 					headers: { "content-type": "application/json; charset=utf-8" },
 				});
 			},
 		});
 
-		const content = await agent.chat("  Hello there  ");
-
-		expect(content).toBe("Hello from agent");
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/chat");
-		expect(receivedInit?.method).toBe("POST");
-		expect(receivedInit?.headers).toEqual({
-			"content-type": "application/json; charset=utf-8",
-			authorization: "Bearer sk_test_123",
-		});
-		expect(receivedInit?.body).toBe(JSON.stringify({ message: "Hello there" }));
-	});
-
-	test("chat rejects empty messages", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
-			fetch: async () =>
-				new Response(JSON.stringify({ content: "unused" }), {
-					status: 200,
-					headers: { "content-type": "application/json; charset=utf-8" },
-				}),
-		});
-
-		await expect(agent.chat("   ")).rejects.toThrow("Message is required.");
-	});
-
-	test("chat maps API errors to PortacallError", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
-			fetch: async () =>
-				new Response(
-					JSON.stringify({
-						message: "Invalid secret key",
-						code: "invalid_secret_key",
-					}),
-					{
-						status: 401,
-						headers: { "content-type": "application/json; charset=utf-8" },
-					},
-				),
-		});
-
-		try {
-			await agent.chat("Hello");
-			throw new Error("Expected chat to throw.");
-		} catch (error) {
-			expect(error).toBeInstanceOf(Error);
-			expect(error).toMatchObject({
-				name: "PortacallError",
-				message: "Invalid secret key",
-				status: 401,
-				code: "invalid_secret_key",
-			});
-		}
-	});
-
-	test("handler returns health status", async () => {
-		const agent = portacall({
-			agentId: "",
-			secretKey: "",
-			fetch: async () =>
-				new Response(JSON.stringify({ content: "unused" }), {
-					status: 200,
-					headers: { "content-type": "application/json; charset=utf-8" },
-				}),
-		});
-
 		const response = await agent.handler(
-			new Request("https://example.com/api/agent/health"),
-		);
-
-		expect(response.status).toBe(200);
-		await expect(response.json()).resolves.toEqual({
-			ok: true,
-			configured: false,
-		});
-	});
-
-	test("handler returns chat response", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
-			baseURL: "https://example.com",
-			fetch: async () =>
-				new Response(JSON.stringify({ content: "Handled by SDK" }), {
-					status: 200,
-					headers: { "content-type": "application/json; charset=utf-8" },
-				}),
-		});
-
-		const response = await agent.handler(
-			new Request("https://example.com/api/agent/chat", {
+			new Request("https://backend.example.com/api/agent/agent_123/chat", {
 				method: "POST",
 				headers: {
 					"content-type": "application/json; charset=utf-8",
@@ -124,13 +76,22 @@ describe("portacall", () => {
 			}),
 		);
 
+		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/chat");
+		expect(receivedInit?.method).toBe("POST");
+		expect(receivedInit?.headers).toEqual({
+			"content-type": "application/json; charset=utf-8",
+			authorization: "Bearer sk_test_123",
+		});
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({ message: "Hello from handler" }),
+		);
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
 			content: "Handled by SDK",
 		});
 	});
 
-	test("stream sends a request and yields chunks", async () => {
+	test("handler proxies stream requests to the Portacall API", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 		const encoder = new TextEncoder();
@@ -160,12 +121,16 @@ describe("portacall", () => {
 			},
 		});
 
-		const chunks: string[] = [];
-		for await (const chunk of agent.stream("  Hello there  ")) {
-			chunks.push(chunk);
-		}
+		const response = await agent.handler(
+			new Request("https://backend.example.com/api/agent/agent_123/stream", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json; charset=utf-8",
+				},
+				body: JSON.stringify({ message: "  Hello there  " }),
+			}),
+		);
 
-		expect(chunks).toEqual(["Hello ", "from ", "stream"]);
 		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/stream");
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
@@ -173,38 +138,11 @@ describe("portacall", () => {
 			authorization: "Bearer sk_test_123",
 		});
 		expect(receivedInit?.body).toBe(JSON.stringify({ message: "Hello there" }));
-	});
-
-	test("stream maps API errors to PortacallError", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
-			fetch: async () =>
-				new Response(
-					JSON.stringify({
-						message: "Streaming is unavailable",
-						code: "stream_unavailable",
-					}),
-					{
-						status: 503,
-						headers: { "content-type": "application/json; charset=utf-8" },
-					},
-				),
-		});
-
-		try {
-			for await (const _chunk of agent.stream("Hello")) {
-			}
-			throw new Error("Expected stream to throw.");
-		} catch (error) {
-			expect(error).toBeInstanceOf(Error);
-			expect(error).toMatchObject({
-				name: "PortacallError",
-				message: "Streaming is unavailable",
-				status: 503,
-				code: "stream_unavailable",
-			});
-		}
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toBe(
+			"text/plain; charset=utf-8",
+		);
+		expect(await response.text()).toBe("Hello from stream");
 	});
 
 	test("hono adapter exposes health route", async () => {
@@ -218,7 +156,8 @@ describe("portacall", () => {
 				}),
 		});
 
-		const response = await createPortacallHono(agent).request("/health");
+		const response =
+			await createPortacallHono(agent).request("/agent_123/health");
 
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
@@ -271,7 +210,7 @@ describe("portacall", () => {
 		await createPortacallExpress(agent)(
 			{
 				method: "POST",
-				originalUrl: "/api/agent/chat",
+				originalUrl: "/api/agent/agent_123/chat",
 				headers: {
 					host: "example.com",
 					"content-type": "application/json; charset=utf-8",

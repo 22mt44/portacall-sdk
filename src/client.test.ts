@@ -6,7 +6,8 @@ describe("portacall client", () => {
 		let receivedURL = "";
 
 		const agent = portacall({
-			baseURL: "https://example.com/api/agent",
+			agentId: "agent_123",
+			backendURL: "https://example.com",
 			fetch: async (input) => {
 				receivedURL = String(input);
 
@@ -21,7 +22,8 @@ describe("portacall client", () => {
 			ok: true,
 			configured: true,
 		});
-		expect(receivedURL).toBe("https://example.com/api/agent/health");
+		expect(agent.baseURL).toBe("https://example.com/api/agent/agent_123");
+		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/health");
 	});
 
 	test("chat sends a request and returns content", async () => {
@@ -29,7 +31,8 @@ describe("portacall client", () => {
 		let receivedInit: RequestInit | undefined;
 
 		const agent = portacall({
-			baseURL: "https://example.com/api/agent",
+			agentId: "agent_123",
+			backendURL: "https://example.com",
 			fetch: async (input, init) => {
 				receivedURL = String(input);
 				receivedInit = init;
@@ -44,7 +47,7 @@ describe("portacall client", () => {
 		const content = await agent.chat("  Hello there  ");
 
 		expect(content).toBe("Hello from client");
-		expect(receivedURL).toBe("https://example.com/api/agent/chat");
+		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/chat");
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",
@@ -54,6 +57,7 @@ describe("portacall client", () => {
 
 	test("chat rejects empty messages", async () => {
 		const agent = portacall({
+			agentId: "agent_123",
 			fetch: async () =>
 				new Response(JSON.stringify({ content: "unused" }), {
 					status: 200,
@@ -66,6 +70,7 @@ describe("portacall client", () => {
 
 	test("chat maps API errors to PortacallError", async () => {
 		const agent = portacall({
+			agentId: "agent_123",
 			fetch: async () =>
 				new Response(
 					JSON.stringify({
@@ -99,7 +104,8 @@ describe("portacall client", () => {
 		const encoder = new TextEncoder();
 
 		const agent = portacall({
-			baseURL: "https://example.com/api/agent",
+			agentId: "agent_123",
+			backendURL: "https://example.com",
 			fetch: async (input, init) => {
 				receivedURL = String(input);
 				receivedInit = init;
@@ -127,7 +133,7 @@ describe("portacall client", () => {
 		}
 
 		expect(chunks).toEqual(["Hello ", "from ", "client"]);
-		expect(receivedURL).toBe("https://example.com/api/agent/stream");
+		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/stream");
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",

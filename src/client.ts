@@ -1,7 +1,7 @@
 import { PortacallError } from "./errors";
 import { createRequestError, normalizeMessage, readTextStream } from "./shared";
 
-const DEFAULT_BASE_URL = "/api/agent";
+const DEFAULT_BACKEND_URL = "";
 
 type ChatResponse = {
 	content: string;
@@ -16,7 +16,8 @@ export type PortacallClientFetch = (
 ) => Promise<Response>;
 
 export type PortacallClientOptions = {
-	baseURL?: string;
+	agentId: string;
+	backendURL?: string;
 	headers?: Record<string, string>;
 	fetch?: PortacallClientFetch;
 };
@@ -27,18 +28,22 @@ export type PortacallClientHealth = {
 };
 
 export type PortacallClient = {
+	agentId: string;
+	backendURL: string;
 	baseURL: string;
 	health(): Promise<PortacallClientHealth>;
 	chat(message: string): Promise<string>;
 	stream(message: string): AsyncIterable<string>;
 };
 
-export function portacall(
-	options: PortacallClientOptions = {},
-): PortacallClient {
-	const baseURL = normalizeBaseURL(options.baseURL);
+export function portacall(options: PortacallClientOptions): PortacallClient {
+	const agentId = normalizeAgentId(options.agentId);
+	const backendURL = normalizeBackendURL(options.backendURL);
+	const baseURL = createBaseURL(backendURL, agentId);
 
 	return {
+		agentId,
+		backendURL,
 		baseURL,
 		async health(): Promise<PortacallClientHealth> {
 			const response = await request(baseURL, options, "/health");
@@ -98,13 +103,31 @@ async function request(
 	});
 }
 
-function normalizeBaseURL(baseURL: string | undefined): string {
-	const value = baseURL?.trim() ?? "";
+function normalizeAgentId(agentId: string): string {
+	const value = agentId.trim();
 	if (!value) {
-		return DEFAULT_BASE_URL;
+		throw new Error("Agent ID is required.");
 	}
 
-	return value.endsWith("/") ? value.slice(0, -1) : value;
+	return value;
+}
+
+function normalizeBackendURL(backendURL: string | undefined): string {
+	const value = backendURL?.trim() ?? DEFAULT_BACKEND_URL;
+	return stripTrailingSlash(value);
+}
+
+function createBaseURL(backendURL: string, agentId: string): string {
+	const agentPath = `api/agent/${encodeURIComponent(agentId)}`;
+	if (/^https?:\/\//.test(backendURL)) {
+		return new URL(agentPath, `${backendURL}/`).toString().replace(/\/$/, "");
+	}
+
+	if (!backendURL) {
+		return `/${agentPath}`;
+	}
+
+	return `${backendURL}/${agentPath}`;
 }
 
 function createURL(baseURL: string, path: string): string {
