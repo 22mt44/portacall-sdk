@@ -8,17 +8,23 @@ type ChatResponse = {
 	content: string;
 };
 
-export function portacall(options: PortacallOptions): Portacall {
-	const agentId = options.agentId.trim();
-	const secretKey = options.secretKey.trim();
+export function portacall(
+	secretKey: string,
+	options: PortacallOptions = {},
+): Portacall {
+	const normalizedSecretKey = secretKey.trim();
+	const configured = normalizedSecretKey.length > 0;
 	const requestOptions = {
 		...options,
-		agentId,
-		secretKey,
+		secretKey: normalizedSecretKey,
 	};
-	const configured = agentId.length > 0 && secretKey.length > 0;
-	const chat = async (message: string): Promise<string> => {
-		const response = await requestAgent(requestOptions, "/chat", message);
+	const chat = async (agentId: string, message: string): Promise<string> => {
+		const response = await requestAgent(
+			requestOptions,
+			agentId,
+			"/chat",
+			message,
+		);
 
 		if (!response.ok) {
 			throw await createRequestError(response, "Portacall request failed.");
@@ -29,14 +35,13 @@ export function portacall(options: PortacallOptions): Portacall {
 	};
 
 	return {
-		agentId,
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
-					agentId,
 					configured,
 					chat,
-					openStream: (message) => openStream(requestOptions, message),
+					openStream: (agentId, message) =>
+						openStream(requestOptions, agentId, message),
 				},
 				request,
 			);
@@ -44,20 +49,25 @@ export function portacall(options: PortacallOptions): Portacall {
 	};
 }
 
-function createAgentURL(options: PortacallOptions, path: string): string {
+function createAgentURL(
+	options: PortacallOptions & { secretKey: string },
+	agentId: string,
+	path: string,
+): string {
 	return new URL(
-		`/api/agent/${encodeURIComponent(options.agentId)}${path}`,
+		`/api/portacall/${encodeURIComponent(agentId)}${path}`,
 		options.baseURL ?? DEFAULT_BASE_URL,
 	).toString();
 }
 
 async function requestAgent(
-	options: PortacallOptions,
+	options: PortacallOptions & { secretKey: string },
+	agentId: string,
 	path: string,
 	message: string,
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
-	return fetchImpl(createAgentURL(options, path), {
+	return fetchImpl(createAgentURL(options, agentId, path), {
 		method: "POST",
 		headers: {
 			"content-type": "application/json; charset=utf-8",
@@ -69,10 +79,11 @@ async function requestAgent(
 }
 
 async function openStream(
-	options: PortacallOptions,
+	options: PortacallOptions & { secretKey: string },
+	agentId: string,
 	message: string,
 ): Promise<ReadableStream<Uint8Array>> {
-	const response = await requestAgent(options, "/stream", message);
+	const response = await requestAgent(options, agentId, "/stream", message);
 
 	if (!response.ok) {
 		throw await createRequestError(response, "Portacall request failed.");

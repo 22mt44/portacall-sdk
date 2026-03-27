@@ -1,8 +1,10 @@
 type PortacallHandlerAgent = {
-	agentId: string;
 	configured: boolean;
-	chat(message: string): Promise<string>;
-	openStream(message: string): Promise<ReadableStream<Uint8Array>>;
+	chat(agentId: string, message: string): Promise<string>;
+	openStream(
+		agentId: string,
+		message: string,
+	): Promise<ReadableStream<Uint8Array>>;
 };
 
 const STREAM_HEADERS = {
@@ -18,7 +20,7 @@ export async function handlePortacallRequest(
 	const url = new URL(request.url);
 	const route = matchRoute(trimTrailingSlash(url.pathname));
 
-	if (!route || route.agentId !== agent.agentId) {
+	if (!route) {
 		return json({ message: "Not found." }, 404);
 	}
 
@@ -43,7 +45,7 @@ export async function handlePortacallRequest(
 		}
 
 		try {
-			const content = await agent.chat(message);
+			const content = await agent.chat(route.agentId, message);
 			return json({ content });
 		} catch (error) {
 			return errorResponse(error);
@@ -65,7 +67,7 @@ export async function handlePortacallRequest(
 		}
 
 		try {
-			const stream = await agent.openStream(message);
+			const stream = await agent.openStream(route.agentId, message);
 			return new Response(stream, { headers: STREAM_HEADERS });
 		} catch (error) {
 			return errorResponse(error);
@@ -86,8 +88,7 @@ async function readMessage(request: Request): Promise<string | null> {
 function missingConfiguration(): Response {
 	return json(
 		{
-			message:
-				"Missing Portacall agent configuration. Provide agentId and secretKey.",
+			message: "Missing Portacall configuration. Provide secretKey.",
 		},
 		500,
 	);
@@ -130,7 +131,7 @@ function matchRoute(
 	pathname: string,
 ): { agentId: string; action: "health" | "chat" | "stream" } | null {
 	const segments = pathname.split("/").filter(Boolean);
-	if (segments.length < 2) {
+	if (segments.length < 4) {
 		return null;
 	}
 

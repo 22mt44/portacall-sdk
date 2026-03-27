@@ -1,6 +1,6 @@
 # @portacall/proxy
 
-Backend proxy SDK for Portacall agent routes.
+Backend proxy SDK for Portacall routes.
 
 ## Install
 
@@ -14,24 +14,23 @@ npm install @portacall/proxy
 
 ## Usage
 
-Create one shared `lib/agent.ts` in your backend application and expose `agent.handler()` under `/api/agent/*`.
+Create one shared `lib/portacall.ts` in your backend application and expose `portacall.handler()` under `/api/portacall/*`.
 
 ```ts
-import { portacall } from "@portacall/proxy";
+import { portacall as createPortacall } from "@portacall/proxy";
 
-export const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "demo-agent",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
+export const portacall = createPortacall(
+  process.env.PORTACALL_SECRET_KEY ?? "",
+);
 ```
 
 ```ts
 import { Hono } from "hono";
-import { agent } from "./lib/agent";
+import { portacall } from "./lib/portacall";
 
 const app = new Hono();
 
-app.all("/api/agent/*", (c) => agent.handler(c.req.raw));
+app.all("/api/portacall/*", (c) => portacall.handler(c.req.raw));
 ```
 
 ## Adapters

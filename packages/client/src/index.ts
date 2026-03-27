@@ -118,7 +118,7 @@ function normalizeBackendURL(backendURL: string | undefined): string {
 }
 
 function createBaseURL(backendURL: string, agentId: string): string {
-	const agentPath = `api/agent/${encodeURIComponent(agentId)}`;
+	const agentPath = `api/portacall/${encodeURIComponent(agentId)}`;
 	if (/^https?:\/\//.test(backendURL)) {
 		return new URL(agentPath, `${backendURL}/`).toString().replace(/\/$/, "");
 	}

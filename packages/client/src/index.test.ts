@@ -22,8 +22,10 @@ describe("portacall client", () => {
 			ok: true,
 			configured: true,
 		});
-		expect(agent.baseURL).toBe("https://example.com/api/agent/agent_123");
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/health");
+		expect(agent.baseURL).toBe("https://example.com/api/portacall/agent_123");
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/health",
+		);
 	});
 
 	test("chat sends a request and returns content", async () => {
@@ -47,7 +49,9 @@ describe("portacall client", () => {
 		const content = await agent.chat("  Hello there  ");
 
 		expect(content).toBe("Hello from client");
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/chat");
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/chat",
+		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",
@@ -133,7 +137,9 @@ describe("portacall client", () => {
 		}
 
 		expect(chunks).toEqual(["Hello ", "from ", "client"]);
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/stream");
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/stream",
+		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",

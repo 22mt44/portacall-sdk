@@ -5,16 +5,16 @@ Monorepo for the published Portacall SDK packages.
 ## Packages
 
 - `@portacall/client`: frontend SDK that sends requests to your backend route.
-- `@portacall/proxy`: backend SDK that exposes `agent.handler()` plus an optional Express adapter.
+- `@portacall/proxy`: backend SDK that exposes `portacall.handler()` plus an optional Express adapter.
 
 `secretKey` must never be exposed to the browser.
 
 ## Frontend package
 
 ```ts
-import { portacall } from "@portacall/client";
+import { portacall as createPortacall } from "@portacall/client";
 
-export const agent = portacall({
+export const portacall = createPortacall({
   backendURL: "http://localhost:4000",
   agentId: "demo-agent",
 });
@@ -23,21 +23,20 @@ export const agent = portacall({
 ## Backend package
 
 ```ts
-import { portacall } from "@portacall/proxy";
+import { portacall as createPortacall } from "@portacall/proxy";
 
-export const agent = portacall({
-  agentId: process.env.PORTACALL_AGENT_ID ?? "demo-agent",
-  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
-});
+export const portacall = createPortacall(
+  process.env.PORTACALL_SECRET_KEY ?? "",
+);
 ```
 
 ```ts
 import { Hono } from "hono";
-import { agent } from "./lib/agent";
+import { portacall } from "./lib/portacall";
 
 const app = new Hono();
 
-app.all("/api/agent/*", (c) => agent.handler(c.req.raw));
+app.all("/api/portacall/*", (c) => portacall.handler(c.req.raw));
 ```
 
 ## Workspace commands

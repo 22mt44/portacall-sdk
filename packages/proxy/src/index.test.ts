@@ -4,9 +4,7 @@ import { portacall } from "./portacall";
 
 describe("portacall proxy", () => {
 	test("handler returns health status", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "",
+		const proxy = portacall("", {
 			fetch: async () =>
 				new Response(JSON.stringify({ content: "unused" }), {
 					status: 200,
@@ -14,8 +12,8 @@ describe("portacall proxy", () => {
 				}),
 		});
 
-		const response = await agent.handler(
-			new Request("https://example.com/api/agent/agent_123/health"),
+		const response = await proxy.handler(
+			new Request("https://example.com/api/portacall/agent_123/health"),
 		);
 
 		expect(response.status).toBe(200);
@@ -25,10 +23,8 @@ describe("portacall proxy", () => {
 		});
 	});
 
-	test("handler returns not found for a different agent id", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
+	test("handler returns not found for an invalid route", async () => {
+		const proxy = portacall("sk_test_123", {
 			fetch: async () =>
 				new Response(JSON.stringify({ content: "unused" }), {
 					status: 200,
@@ -36,8 +32,8 @@ describe("portacall proxy", () => {
 				}),
 		});
 
-		const response = await agent.handler(
-			new Request("https://example.com/api/agent/agent_999/health"),
+		const response = await proxy.handler(
+			new Request("https://example.com/api/portacall/health"),
 		);
 
 		expect(response.status).toBe(404);
@@ -50,9 +46,7 @@ describe("portacall proxy", () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
+		const proxy = portacall("sk_test_123", {
 			baseURL: "https://example.com",
 			fetch: async (input, init) => {
 				receivedURL = String(input);
@@ -65,8 +59,8 @@ describe("portacall proxy", () => {
 			},
 		});
 
-		const response = await agent.handler(
-			new Request("https://backend.example.com/api/agent/agent_123/chat", {
+		const response = await proxy.handler(
+			new Request("https://backend.example.com/api/portacall/agent_123/chat", {
 				method: "POST",
 				headers: {
 					"content-type": "application/json; charset=utf-8",
@@ -75,7 +69,9 @@ describe("portacall proxy", () => {
 			}),
 		);
 
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/chat");
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/chat",
+		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",
@@ -95,9 +91,7 @@ describe("portacall proxy", () => {
 		let receivedInit: RequestInit | undefined;
 		const encoder = new TextEncoder();
 
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
+		const proxy = portacall("sk_test_123", {
 			baseURL: "https://example.com",
 			fetch: async (input, init) => {
 				receivedURL = String(input);
@@ -120,17 +114,22 @@ describe("portacall proxy", () => {
 			},
 		});
 
-		const response = await agent.handler(
-			new Request("https://backend.example.com/api/agent/agent_123/stream", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json; charset=utf-8",
+		const response = await proxy.handler(
+			new Request(
+				"https://backend.example.com/api/portacall/agent_123/stream",
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+					body: JSON.stringify({ message: "  Hello there  " }),
 				},
-				body: JSON.stringify({ message: "  Hello there  " }),
-			}),
+			),
 		);
 
-		expect(receivedURL).toBe("https://example.com/api/agent/agent_123/stream");
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/stream",
+		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
 			"content-type": "application/json; charset=utf-8",
@@ -145,9 +144,7 @@ describe("portacall proxy", () => {
 	});
 
 	test("express adapter handles chat route", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
-			secretKey: "sk_test_123",
+		const proxy = portacall("sk_test_123", {
 			baseURL: "https://example.com",
 			fetch: async () =>
 				new Response(
@@ -185,10 +182,10 @@ describe("portacall proxy", () => {
 			},
 		};
 
-		await createPortacallExpress(agent)(
+		await createPortacallExpress(proxy)(
 			{
 				method: "POST",
-				originalUrl: "/api/agent/agent_123/chat",
+				originalUrl: "/api/portacall/agent_123/chat",
 				headers: {
 					host: "example.com",
 					"content-type": "application/json; charset=utf-8",
