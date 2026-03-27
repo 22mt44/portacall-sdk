@@ -5,9 +5,7 @@ describe("portacall client", () => {
 	test("health reads backend health status", async () => {
 		let receivedURL = "";
 
-		const agent = portacall({
-			agentId: "agent_123",
-			backendURL: "https://example.com",
+		const agent = portacall("https://example.com", "agent_123", {
 			fetch: async (input) => {
 				receivedURL = String(input);
 
@@ -32,9 +30,7 @@ describe("portacall client", () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 
-		const agent = portacall({
-			agentId: "agent_123",
-			backendURL: "https://example.com",
+		const agent = portacall("https://example.com", "agent_123", {
 			fetch: async (input, init) => {
 				receivedURL = String(input);
 				receivedInit = init;
@@ -60,8 +56,7 @@ describe("portacall client", () => {
 	});
 
 	test("chat rejects empty messages", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
+		const agent = portacall("", "agent_123", {
 			fetch: async () =>
 				new Response(JSON.stringify({ content: "unused" }), {
 					status: 200,
@@ -73,8 +68,7 @@ describe("portacall client", () => {
 	});
 
 	test("chat maps API errors to PortacallError", async () => {
-		const agent = portacall({
-			agentId: "agent_123",
+		const agent = portacall("", "agent_123", {
 			fetch: async () =>
 				new Response(
 					JSON.stringify({
@@ -107,9 +101,7 @@ describe("portacall client", () => {
 		let receivedInit: RequestInit | undefined;
 		const encoder = new TextEncoder();
 
-		const agent = portacall({
-			agentId: "agent_123",
-			backendURL: "https://example.com",
+		const agent = portacall("https://example.com", "agent_123", {
 			fetch: async (input, init) => {
 				receivedURL = String(input);
 				receivedInit = init;
@@ -145,5 +137,17 @@ describe("portacall client", () => {
 			"content-type": "application/json; charset=utf-8",
 		});
 		expect(receivedInit?.body).toBe(JSON.stringify({ message: "Hello there" }));
+	});
+
+	test("multiple agent instances can coexist", () => {
+		const supportAgent = portacall("https://example.com", "support-agent");
+		const salesAgent = portacall("https://example.com", "sales-agent");
+
+		expect(supportAgent.baseURL).toBe(
+			"https://example.com/api/portacall/support-agent",
+		);
+		expect(salesAgent.baseURL).toBe(
+			"https://example.com/api/portacall/sales-agent",
+		);
 	});
 });

@@ -14,23 +14,23 @@ npm install @portacall/proxy
 
 ## Usage
 
-Create one shared `lib/portacall.ts` in your backend application and expose `portacall.handler()` under `/api/portacall/*`.
+Create one shared `lib/portacall.ts` in your backend application and expose `proxy.handler()` under `/api/portacall/*`.
 
 ```ts
-import { portacall as createPortacall } from "@portacall/proxy";
+import { portacall } from "@portacall/proxy";
 
-export const portacall = createPortacall(
+export const proxy = portacall(
   process.env.PORTACALL_SECRET_KEY ?? "",
 );
 ```
 
 ```ts
 import { Hono } from "hono";
-import { portacall } from "./lib/portacall";
+import { proxy } from "./lib/portacall";
 
 const app = new Hono();
 
-app.all("/api/portacall/*", (c) => portacall.handler(c.req.raw));
+app.all("/api/portacall/*", (c) => proxy.handler(c.req.raw));
 ```
 
 ## Adapters

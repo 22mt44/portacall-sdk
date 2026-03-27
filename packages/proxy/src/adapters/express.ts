@@ -17,7 +17,7 @@ type ExpressResponseLike = {
 	write(chunk: string | Uint8Array): unknown;
 };
 
-type PortacallRequestHandler = {
+type PortacallProxy = {
 	handler(request: Request): Promise<Response>;
 };
 
@@ -28,14 +28,14 @@ export type PortacallExpressHandler = (
 ) => Promise<void>;
 
 export function createPortacallExpress(
-	agent: PortacallRequestHandler,
+	portacall: PortacallProxy,
 ): PortacallExpressHandler {
 	return async (request, response, next) => {
 		try {
 			const expressRequest = request as ExpressRequestLike;
 			const expressResponse = response as ExpressResponseLike;
 			const webRequest = createWebRequest(expressRequest);
-			const webResponse = await agent.handler(webRequest);
+			const webResponse = await portacall.handler(webRequest);
 
 			expressResponse.status(webResponse.status);
 			webResponse.headers.forEach((value, name) => {

@@ -16,8 +16,6 @@ export type PortacallClientFetch = (
 ) => Promise<Response>;
 
 export type PortacallClientOptions = {
-	agentId: string;
-	backendURL?: string;
 	headers?: Record<string, string>;
 	fetch?: PortacallClientFetch;
 };
@@ -36,14 +34,18 @@ export type PortacallClient = {
 	stream(message: string): AsyncIterable<string>;
 };
 
-export function portacall(options: PortacallClientOptions): PortacallClient {
-	const agentId = normalizeAgentId(options.agentId);
-	const backendURL = normalizeBackendURL(options.backendURL);
-	const baseURL = createBaseURL(backendURL, agentId);
+export function portacall(
+	backendURL: string | undefined,
+	agentId: string,
+	options: PortacallClientOptions = {},
+): PortacallClient {
+	const normalizedAgentId = normalizeAgentId(agentId);
+	const normalizedBackendURL = normalizeBackendURL(backendURL);
+	const baseURL = createBaseURL(normalizedBackendURL, normalizedAgentId);
 
 	return {
-		agentId,
-		backendURL,
+		agentId: normalizedAgentId,
+		backendURL: normalizedBackendURL,
 		baseURL,
 		async health(): Promise<PortacallClientHealth> {
 			const response = await request(baseURL, options, "/health");

@@ -1,4 +1,4 @@
-type PortacallHandlerAgent = {
+type PortacallProxyHandler = {
 	configured: boolean;
 	chat(agentId: string, message: string): Promise<string>;
 	openStream(
@@ -14,11 +14,11 @@ const STREAM_HEADERS = {
 };
 
 export async function handlePortacallRequest(
-	agent: PortacallHandlerAgent,
+	portacall: PortacallProxyHandler,
 	request: Request,
 ): Promise<Response> {
 	const url = new URL(request.url);
-	const route = matchRoute(trimTrailingSlash(url.pathname));
+	const route = matchPortacallRoute(trimTrailingSlash(url.pathname));
 
 	if (!route) {
 		return json({ message: "Not found." }, 404);
@@ -26,7 +26,7 @@ export async function handlePortacallRequest(
 
 	if (route.action === "health") {
 		return request.method === "GET"
-			? json({ ok: true, configured: agent.configured })
+			? json({ ok: true, configured: portacall.configured })
 			: methodNotAllowed("GET");
 	}
 
@@ -35,7 +35,7 @@ export async function handlePortacallRequest(
 			return methodNotAllowed("POST");
 		}
 
-		if (!agent.configured) {
+		if (!portacall.configured) {
 			return missingConfiguration();
 		}
 
@@ -45,7 +45,7 @@ export async function handlePortacallRequest(
 		}
 
 		try {
-			const content = await agent.chat(route.agentId, message);
+			const content = await portacall.chat(route.agentId, message);
 			return json({ content });
 		} catch (error) {
 			return errorResponse(error);
@@ -57,7 +57,7 @@ export async function handlePortacallRequest(
 			return methodNotAllowed("POST");
 		}
 
-		if (!agent.configured) {
+		if (!portacall.configured) {
 			return missingConfiguration();
 		}
 
@@ -67,7 +67,7 @@ export async function handlePortacallRequest(
 		}
 
 		try {
-			const stream = await agent.openStream(route.agentId, message);
+			const stream = await portacall.openStream(route.agentId, message);
 			return new Response(stream, { headers: STREAM_HEADERS });
 		} catch (error) {
 			return errorResponse(error);
@@ -127,7 +127,7 @@ function trimTrailingSlash(pathname: string): string {
 		: pathname;
 }
 
-function matchRoute(
+function matchPortacallRoute(
 	pathname: string,
 ): { agentId: string; action: "health" | "chat" | "stream" } | null {
 	const segments = pathname.split("/").filter(Boolean);
