@@ -5,6 +5,16 @@ const DEFAULT_BACKEND_URL = "";
 
 type ChatResponse = {
 	content: string;
+	conversationId: string;
+};
+
+export type PortacallChatOptions = {
+	conversationId?: string | null;
+};
+
+export type PortacallStreamOptions = {
+	conversationId?: string | null;
+	onConversationId?: (conversationId: string) => void;
 };
 
 export type { PortacallErrorPayload } from "./errors";
@@ -29,9 +39,14 @@ export type PortacallClient = {
 	agentId: string;
 	backendURL: string;
 	baseURL: string;
+	readonly conversationId: string | null;
+	resetConversation(): void;
 	health(): Promise<PortacallClientHealth>;
-	chat(message: string): Promise<string>;
-	stream(message: string): AsyncIterable<string>;
+	chat(message: string, options?: PortacallChatOptions): Promise<string>;
+	stream(
+		message: string,
+		options?: PortacallStreamOptions,
+	): AsyncIterable<string>;
 };
 
 export function portacall(
@@ -42,11 +57,18 @@ export function portacall(
 	const normalizedAgentId = normalizeAgentId(agentId);
 	const normalizedBackendURL = normalizeBackendURL(backendURL);
 	const baseURL = createBaseURL(normalizedBackendURL, normalizedAgentId);
+	let currentConversationId: string | null = null;
 
 	return {
 		agentId: normalizedAgentId,
 		backendURL: normalizedBackendURL,
 		baseURL,
+		get conversationId() {
+			return currentConversationId;
+		},
+		resetConversation(): void {
+			currentConversationId = null;
+		},
 		async health(): Promise<PortacallClientHealth> {
 			const response = await request(baseURL, options, "/health");
 
@@ -56,9 +78,16 @@ export function portacall(
 
 			return (await response.json()) as PortacallClientHealth;
 		},
-		async chat(message: string): Promise<string> {
+		async chat(
+			message: string,
+			chatOptions: PortacallChatOptions = {},
+		): Promise<string> {
 			const response = await request(baseURL, options, "/chat", {
 				message: normalizeMessage(message),
+				conversationId: resolveConversationId(
+					chatOptions.conversationId,
+					currentConversationId,
+				),
 			});
 
 			if (!response.ok) {
@@ -66,11 +95,19 @@ export function portacall(
 			}
 
 			const payload = (await response.json()) as ChatResponse;
+			currentConversationId = payload.conversationId;
 			return payload.content;
 		},
-		async *stream(message: string): AsyncIterable<string> {
+		async *stream(
+			message: string,
+			streamOptions: PortacallStreamOptions = {},
+		): AsyncIterable<string> {
 			const response = await request(baseURL, options, "/stream", {
 				message: normalizeMessage(message),
+				conversationId: resolveConversationId(
+					streamOptions.conversationId,
+					currentConversationId,
+				),
 			});
 
 			if (!response.ok) {
@@ -83,6 +120,13 @@ export function portacall(
 				});
 			}
 
+			const conversationId =
+				response.headers.get("x-portacall-conversation-id")?.trim() ?? "";
+			if (conversationId) {
+				currentConversationId = conversationId;
+				streamOptions.onConversationId?.(conversationId);
+			}
+
 			yield* readTextStream(response.body);
 		},
 	};
@@ -92,7 +136,7 @@ async function request(
 	baseURL: string,
 	options: PortacallClientOptions,
 	path: string,
-	body?: { message: string },
+	body?: { message: string; conversationId?: string },
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
 	return fetchImpl(createURL(baseURL, path), {
@@ -103,6 +147,18 @@ async function request(
 		},
 		...(body ? { body: JSON.stringify(body) } : {}),
 	});
+}
+
+function resolveConversationId(
+	explicitConversationId: string | null | undefined,
+	currentConversationId: string | null,
+): string | undefined {
+	const value = explicitConversationId?.trim();
+	if (value) {
+		return value;
+	}
+
+	return currentConversationId ?? undefined;
 }
 
 function normalizeAgentId(agentId: string): string {

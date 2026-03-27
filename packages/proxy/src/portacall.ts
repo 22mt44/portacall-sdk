@@ -6,6 +6,7 @@ const DEFAULT_BASE_URL = "https://api.portacall.ai";
 
 type ChatResponse = {
 	content: string;
+	conversationId: string;
 };
 
 export function portacall(
@@ -18,20 +19,24 @@ export function portacall(
 		...options,
 		secretKey: normalizedSecretKey,
 	};
-	const chat = async (agentId: string, message: string): Promise<string> => {
+	const chat = async (
+		agentId: string,
+		message: string,
+		conversationId?: string,
+	): Promise<ChatResponse> => {
 		const response = await requestPortacall(
 			proxyOptions,
 			agentId,
 			"/chat",
 			message,
+			conversationId,
 		);
 
 		if (!response.ok) {
 			throw await createRequestError(response, "Portacall request failed.");
 		}
 
-		const payload = (await response.json()) as ChatResponse;
-		return payload.content;
+		return (await response.json()) as ChatResponse;
 	};
 
 	return {
@@ -40,8 +45,8 @@ export function portacall(
 				{
 					configured,
 					chat,
-					openStream: (agentId, message) =>
-						openStream(proxyOptions, agentId, message),
+					openStream: (agentId, message, conversationId) =>
+						openStream(proxyOptions, agentId, message, conversationId),
 				},
 				request,
 			);
@@ -65,6 +70,7 @@ async function requestPortacall(
 	agentId: string,
 	path: string,
 	message: string,
+	conversationId?: string,
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
 	return fetchImpl(createPortacallURL(options, agentId, path), {
@@ -74,7 +80,10 @@ async function requestPortacall(
 			authorization: `Bearer ${options.secretKey}`,
 			...options.headers,
 		},
-		body: JSON.stringify({ message: normalizeMessage(message) }),
+		body: JSON.stringify({
+			message: normalizeMessage(message),
+			...(conversationId ? { conversationId } : {}),
+		}),
 	});
 }
 
@@ -82,8 +91,15 @@ async function openStream(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	message: string,
-): Promise<ReadableStream<Uint8Array>> {
-	const response = await requestPortacall(options, agentId, "/stream", message);
+	conversationId?: string,
+): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }> {
+	const response = await requestPortacall(
+		options,
+		agentId,
+		"/stream",
+		message,
+		conversationId,
+	);
 
 	if (!response.ok) {
 		throw await createRequestError(response, "Portacall request failed.");
@@ -93,5 +109,14 @@ async function openStream(
 		throw new Error("Portacall stream body is empty.");
 	}
 
-	return response.body;
+	const resolvedConversationId =
+		response.headers.get("x-portacall-conversation-id")?.trim() ?? "";
+	if (!resolvedConversationId) {
+		throw new Error("Portacall conversation ID header is missing.");
+	}
+
+	return {
+		stream: response.body,
+		conversationId: resolvedConversationId,
+	};
 }

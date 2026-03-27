@@ -1,10 +1,15 @@
 type PortacallProxyHandler = {
 	configured: boolean;
-	chat(agentId: string, message: string): Promise<string>;
+	chat(
+		agentId: string,
+		message: string,
+		conversationId?: string,
+	): Promise<{ content: string; conversationId: string }>;
 	openStream(
 		agentId: string,
 		message: string,
-	): Promise<ReadableStream<Uint8Array>>;
+		conversationId?: string,
+	): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }>;
 };
 
 const STREAM_HEADERS = {
@@ -39,14 +44,18 @@ export async function handlePortacallRequest(
 			return missingConfiguration();
 		}
 
-		const message = await readMessage(request);
-		if (!message) {
+		const payload = await readChatInput(request);
+		if (!payload) {
 			return json({ message: "Message is required." }, 400);
 		}
 
 		try {
-			const content = await portacall.chat(route.agentId, message);
-			return json({ content });
+			const response = await portacall.chat(
+				route.agentId,
+				payload.message,
+				payload.conversationId,
+			);
+			return json(response);
 		} catch (error) {
 			return errorResponse(error);
 		}
@@ -61,14 +70,23 @@ export async function handlePortacallRequest(
 			return missingConfiguration();
 		}
 
-		const message = await readMessage(request);
-		if (!message) {
+		const payload = await readChatInput(request);
+		if (!payload) {
 			return json({ message: "Message is required." }, 400);
 		}
 
 		try {
-			const stream = await portacall.openStream(route.agentId, message);
-			return new Response(stream, { headers: STREAM_HEADERS });
+			const response = await portacall.openStream(
+				route.agentId,
+				payload.message,
+				payload.conversationId,
+			);
+			return new Response(response.stream, {
+				headers: {
+					...STREAM_HEADERS,
+					"x-portacall-conversation-id": response.conversationId,
+				},
+			});
 		} catch (error) {
 			return errorResponse(error);
 		}
@@ -77,12 +95,20 @@ export async function handlePortacallRequest(
 	return json({ message: "Not found." }, 404);
 }
 
-async function readMessage(request: Request): Promise<string | null> {
+async function readChatInput(
+	request: Request,
+): Promise<{ message: string; conversationId?: string } | null> {
 	const payload = (await request.json().catch(() => null)) as {
 		message?: string;
+		conversationId?: string;
 	} | null;
 	const message = payload?.message?.trim();
-	return message ? message : null;
+	if (!message) {
+		return null;
+	}
+
+	const conversationId = payload?.conversationId?.trim();
+	return conversationId ? { message, conversationId } : { message };
 }
 
 function missingConfiguration(): Response {
