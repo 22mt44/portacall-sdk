@@ -37,12 +37,24 @@ The proxy handles these route shapes:
 
 - `GET /api/portacall/:agentId/health`
 - `GET /api/portacall/:agentId/conversations?externalUserId=...`
+- `POST /api/portacall/:agentId/conversations`
+- `GET /api/portacall/:agentId/conversations/:conversationId/messages?externalUserId=...`
+- `PATCH /api/portacall/:agentId/conversations/:conversationId`
+- `PATCH /api/portacall/:agentId/conversations/:conversationId/archive`
+- `DELETE /api/portacall/:agentId/conversations/:conversationId?externalUserId=...`
 - `POST /api/portacall/:agentId/chat`
 - `POST /api/portacall/:agentId/stream`
 
 Chat and stream requests must include `externalUserId` in the JSON body. The
 same `externalUserId` is required later if the client resumes a saved
 `conversationId`.
+
+The management routes let one authenticated frontend user:
+
+- create an empty conversation with an optional title
+- list conversations with pagination and optional archived results
+- fetch paginated message history for one conversation
+- rename, archive, unarchive, or delete a conversation
 
 ## Adapters
 

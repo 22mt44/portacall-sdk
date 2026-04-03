@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createPortacallExpress } from "./adapters/express";
 import { portacall } from "./portacall";
 
+const conversationId = "18e40f1f-490d-4ee9-9d31-c6da546dac66";
+
 describe("portacall proxy", () => {
 	test("handler returns health status", async () => {
 		const proxy = portacall("", {
@@ -55,7 +57,7 @@ describe("portacall proxy", () => {
 				return new Response(
 					JSON.stringify({
 						content: "Handled by SDK",
-						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+						conversationId,
 					}),
 					{
 						status: 200,
@@ -95,7 +97,7 @@ describe("portacall proxy", () => {
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
 			content: "Handled by SDK",
-			conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+			conversationId,
 		});
 	});
 
@@ -113,12 +115,19 @@ describe("portacall proxy", () => {
 					JSON.stringify({
 						conversations: [
 							{
-								id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+								id: conversationId,
+								title: "Support thread",
 								createdAt: "2026-03-27T10:00:00.000Z",
 								updatedAt: "2026-03-27T10:05:00.000Z",
 								lastMessageAt: "2026-03-27T10:05:00.000Z",
+								archivedAt: null,
 							},
 						],
+						pagination: {
+							limit: 25,
+							offset: 10,
+							hasMore: true,
+						},
 					}),
 					{
 						status: 200,
@@ -130,12 +139,12 @@ describe("portacall proxy", () => {
 
 		const response = await proxy.handler(
 			new Request(
-				"https://backend.example.com/api/portacall/agent_123/conversations?externalUserId=user_123",
+				"https://backend.example.com/api/portacall/agent_123/conversations?externalUserId=user_123&limit=25&offset=10&includeArchived=true",
 			),
 		);
 
 		expect(receivedURL).toBe(
-			"https://example.com/api/portacall/agent_123/conversations?externalUserId=user_123",
+			"https://example.com/api/portacall/agent_123/conversations?externalUserId=user_123&limit=25&offset=10&includeArchived=true",
 		);
 		expect(receivedInit?.method).toBe("GET");
 		expect(receivedInit?.headers).toEqual({
@@ -144,12 +153,149 @@ describe("portacall proxy", () => {
 		await expect(response.json()).resolves.toEqual({
 			conversations: [
 				{
-					id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					id: conversationId,
+					title: "Support thread",
 					createdAt: "2026-03-27T10:00:00.000Z",
 					updatedAt: "2026-03-27T10:05:00.000Z",
 					lastMessageAt: "2026-03-27T10:05:00.000Z",
+					archivedAt: null,
 				},
 			],
+			pagination: {
+				limit: 25,
+				offset: 10,
+				hasMore: true,
+			},
+		});
+	});
+
+	test("handler creates conversations through the Portacall API", async () => {
+		let receivedURL = "";
+		let receivedInit: RequestInit | undefined;
+
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async (input, init) => {
+				receivedURL = String(input);
+				receivedInit = init;
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 201,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		const response = await proxy.handler(
+			new Request(
+				"https://backend.example.com/api/portacall/agent_123/conversations",
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+					body: JSON.stringify({
+						externalUserId: "  user_123  ",
+						title: "  Support thread  ",
+					}),
+				},
+			),
+		);
+
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/conversations",
+		);
+		expect(receivedInit?.method).toBe("POST");
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({
+				externalUserId: "user_123",
+				title: "Support thread",
+			}),
+		);
+		expect(response.status).toBe(201);
+		await expect(response.json()).resolves.toEqual({
+			conversation: {
+				id: conversationId,
+				title: "Support thread",
+				createdAt: "2026-03-27T10:00:00.000Z",
+				updatedAt: "2026-03-27T10:05:00.000Z",
+				lastMessageAt: "2026-03-27T10:05:00.000Z",
+				archivedAt: null,
+			},
+		});
+	});
+
+	test("handler proxies conversation message history requests", async () => {
+		let receivedURL = "";
+
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async (input) => {
+				receivedURL = String(input);
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+						messages: [
+							{
+								id: "f55cf2a2-7067-4437-90cc-51b6d55861e0",
+								role: "user",
+								content: "Hello there",
+								createdAt: "2026-03-27T10:00:00.000Z",
+							},
+						],
+						pagination: {
+							limit: 20,
+							offset: 5,
+							hasMore: false,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		const response = await proxy.handler(
+			new Request(
+				`https://backend.example.com/api/portacall/agent_123/conversations/${conversationId}/messages?externalUserId=user_123&limit=20&offset=5`,
+			),
+		);
+
+		expect(receivedURL).toBe(
+			`https://example.com/api/portacall/agent_123/conversations/${conversationId}/messages?externalUserId=user_123&limit=20&offset=5`,
+		);
+		await expect(response.json()).resolves.toMatchObject({
+			conversation: {
+				id: conversationId,
+				title: "Support thread",
+			},
+			pagination: {
+				limit: 20,
+				offset: 5,
+				hasMore: false,
+			},
 		});
 	});
 
@@ -203,7 +349,7 @@ describe("portacall proxy", () => {
 				},
 				body: JSON.stringify({
 					message: "Hello from handler",
-					conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					conversationId,
 					externalUserId: "user_456",
 				}),
 			}),
@@ -241,8 +387,7 @@ describe("portacall proxy", () => {
 						status: 200,
 						headers: {
 							"content-type": "text/plain; charset=utf-8",
-							"x-portacall-conversation-id":
-								"18e40f1f-490d-4ee9-9d31-c6da546dac66",
+							"x-portacall-conversation-id": conversationId,
 						},
 					},
 				);
@@ -284,9 +429,148 @@ describe("portacall proxy", () => {
 			"text/plain; charset=utf-8",
 		);
 		expect(response.headers.get("x-portacall-conversation-id")).toBe(
-			"18e40f1f-490d-4ee9-9d31-c6da546dac66",
+			conversationId,
 		);
 		expect(await response.text()).toBe("Hello from stream");
+	});
+
+	test("handler renames, archives, and deletes conversations", async () => {
+		const requests: Array<{ url: string; init?: RequestInit }> = [];
+
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async (input, init) => {
+				const url = String(input);
+				requests.push({ url, init });
+
+				if (url.endsWith("/archive")) {
+					return new Response(
+						JSON.stringify({
+							conversation: {
+								id: conversationId,
+								title: "Renamed thread",
+								createdAt: "2026-03-27T10:00:00.000Z",
+								updatedAt: "2026-03-27T10:05:00.000Z",
+								lastMessageAt: "2026-03-27T10:05:00.000Z",
+								archivedAt: "2026-03-27T10:10:00.000Z",
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json; charset=utf-8" },
+						},
+					);
+				}
+
+				if (init?.method === "DELETE") {
+					return new Response(
+						JSON.stringify({ id: conversationId, deleted: true }),
+						{
+							status: 200,
+							headers: { "content-type": "application/json; charset=utf-8" },
+						},
+					);
+				}
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Renamed thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await proxy.handler(
+			new Request(
+				`https://backend.example.com/api/portacall/agent_123/conversations/${conversationId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+					body: JSON.stringify({
+						externalUserId: "user_123",
+						title: "  Renamed thread  ",
+					}),
+				},
+			),
+		);
+
+		await proxy.handler(
+			new Request(
+				`https://backend.example.com/api/portacall/agent_123/conversations/${conversationId}/archive`,
+				{
+					method: "PATCH",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+					body: JSON.stringify({
+						externalUserId: "user_123",
+						archived: true,
+					}),
+				},
+			),
+		);
+
+		await proxy.handler(
+			new Request(
+				`https://backend.example.com/api/portacall/agent_123/conversations/${conversationId}?externalUserId=user_123`,
+				{
+					method: "DELETE",
+				},
+			),
+		);
+
+		expect(requests).toEqual([
+			{
+				url: `https://example.com/api/portacall/agent_123/conversations/${conversationId}`,
+				init: {
+					method: "PATCH",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+						authorization: "Bearer sk_test_123",
+					},
+					body: JSON.stringify({
+						externalUserId: "user_123",
+						title: "Renamed thread",
+					}),
+				},
+			},
+			{
+				url: `https://example.com/api/portacall/agent_123/conversations/${conversationId}/archive`,
+				init: {
+					method: "PATCH",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+						authorization: "Bearer sk_test_123",
+					},
+					body: JSON.stringify({
+						externalUserId: "user_123",
+						archived: true,
+					}),
+				},
+			},
+			{
+				url: `https://example.com/api/portacall/agent_123/conversations/${conversationId}?externalUserId=user_123`,
+				init: {
+					method: "DELETE",
+					headers: {
+						authorization: "Bearer sk_test_123",
+					},
+				},
+			},
+		]);
 	});
 
 	test("express adapter handles chat route", async () => {
@@ -296,7 +580,7 @@ describe("portacall proxy", () => {
 				new Response(
 					JSON.stringify({
 						content: "Handled by Express adapter",
-						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+						conversationId,
 					}),
 					{
 						status: 200,
@@ -354,7 +638,7 @@ describe("portacall proxy", () => {
 		expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
 		expect(JSON.parse(body)).toEqual({
 			content: "Handled by Express adapter",
-			conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+			conversationId,
 		});
 	});
 });

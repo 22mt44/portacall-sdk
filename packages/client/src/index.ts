@@ -8,15 +8,52 @@ type ChatResponse = {
 	conversationId: string;
 };
 
+type PortacallConversationResponse = {
+	conversation: PortacallConversationSummary;
+};
+
 export type PortacallConversationSummary = {
 	id: string;
+	title: string | null;
 	createdAt: string;
 	updatedAt: string;
 	lastMessageAt: string;
+	archivedAt: string | null;
 };
 
-type PortacallConversationListResponse = {
+export type PortacallConversationPagination = {
+	limit: number;
+	offset: number;
+	hasMore: boolean;
+};
+
+export type PortacallConversationListOptions = {
+	limit?: number;
+	offset?: number;
+	includeArchived?: boolean;
+};
+
+export type PortacallConversationListResponse = {
 	conversations: PortacallConversationSummary[];
+	pagination: PortacallConversationPagination;
+};
+
+export type PortacallConversationMessage = {
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	createdAt: string;
+};
+
+export type PortacallConversationMessagesOptions = {
+	limit?: number;
+	offset?: number;
+};
+
+export type PortacallConversationMessagesResponse = {
+	conversation: PortacallConversationSummary;
+	messages: PortacallConversationMessage[];
+	pagination: PortacallConversationPagination;
 };
 
 export type PortacallChatOptions = {
@@ -28,6 +65,10 @@ export type PortacallStreamOptions = {
 	externalUserId: string;
 	conversationId?: string | null;
 	onConversationId?: (conversationId: string) => void;
+};
+
+export type PortacallConversationCreateOptions = {
+	title?: string | null;
 };
 
 export type { PortacallErrorPayload } from "./errors";
@@ -55,9 +96,36 @@ export type PortacallClient = {
 	readonly conversationId: string | null;
 	resetConversation(): void;
 	health(): Promise<PortacallClientHealth>;
+	createConversation(
+		externalUserId: string,
+		options?: PortacallConversationCreateOptions,
+	): Promise<PortacallConversationSummary>;
 	getConversations(
 		externalUserId: string,
-	): Promise<PortacallConversationSummary[]>;
+		options?: PortacallConversationListOptions,
+	): Promise<PortacallConversationListResponse>;
+	getConversationMessages(
+		conversationId: string,
+		externalUserId: string,
+		options?: PortacallConversationMessagesOptions,
+	): Promise<PortacallConversationMessagesResponse>;
+	renameConversation(
+		conversationId: string,
+		externalUserId: string,
+		title: string,
+	): Promise<PortacallConversationSummary>;
+	archiveConversation(
+		conversationId: string,
+		externalUserId: string,
+	): Promise<PortacallConversationSummary>;
+	unarchiveConversation(
+		conversationId: string,
+		externalUserId: string,
+	): Promise<PortacallConversationSummary>;
+	deleteConversation(
+		conversationId: string,
+		externalUserId: string,
+	): Promise<void>;
 	chat(message: string, options: PortacallChatOptions): Promise<string>;
 	stream(
 		message: string,
@@ -94,12 +162,14 @@ export function portacall(
 
 			return (await response.json()) as PortacallClientHealth;
 		},
-		async getConversations(
+		async createConversation(
 			externalUserId: string,
-		): Promise<PortacallConversationSummary[]> {
+			createOptions: PortacallConversationCreateOptions = {},
+		): Promise<PortacallConversationSummary> {
 			const response = await request(baseURL, options, "/conversations", {
-				searchParams: {
+				body: {
 					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					...createOptionalTitleBody(createOptions.title),
 				},
 			});
 
@@ -107,9 +177,117 @@ export function portacall(
 				throw await createRequestError(response, "Portacall request failed.");
 			}
 
+			const payload = (await response.json()) as PortacallConversationResponse;
+			currentConversationId = payload.conversation.id;
+			return payload.conversation;
+		},
+		async getConversations(
+			externalUserId: string,
+			listOptions: PortacallConversationListOptions = {},
+		): Promise<PortacallConversationListResponse> {
+			const response = await request(baseURL, options, "/conversations", {
+				searchParams: createConversationListSearchParams(
+					externalUserId,
+					listOptions,
+				),
+			});
+
+			if (!response.ok) {
+				throw await createRequestError(response, "Portacall request failed.");
+			}
+
+			return (await response.json()) as PortacallConversationListResponse;
+		},
+		async getConversationMessages(
+			conversationId: string,
+			externalUserId: string,
+			messageOptions: PortacallConversationMessagesOptions = {},
+		): Promise<PortacallConversationMessagesResponse> {
+			const normalizedConversationId = normalizeConversationId(conversationId);
+			const response = await request(
+				baseURL,
+				options,
+				`/conversations/${encodeURIComponent(normalizedConversationId)}/messages`,
+				{
+					searchParams: createConversationMessagesSearchParams(
+						externalUserId,
+						messageOptions,
+					),
+				},
+			);
+
+			if (!response.ok) {
+				throw await createRequestError(response, "Portacall request failed.");
+			}
+
 			const payload =
-				(await response.json()) as PortacallConversationListResponse;
-			return payload.conversations;
+				(await response.json()) as PortacallConversationMessagesResponse;
+			currentConversationId = payload.conversation.id;
+			return payload;
+		},
+		async renameConversation(
+			conversationId: string,
+			externalUserId: string,
+			title: string,
+		): Promise<PortacallConversationSummary> {
+			return updateConversation(
+				baseURL,
+				options,
+				normalizeConversationId(conversationId),
+				{
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					title: normalizeRequiredTitle(title),
+				},
+			);
+		},
+		async archiveConversation(
+			conversationId: string,
+			externalUserId: string,
+		): Promise<PortacallConversationSummary> {
+			return updateConversationArchiveState(
+				baseURL,
+				options,
+				normalizeConversationId(conversationId),
+				externalUserId,
+				true,
+			);
+		},
+		async unarchiveConversation(
+			conversationId: string,
+			externalUserId: string,
+		): Promise<PortacallConversationSummary> {
+			return updateConversationArchiveState(
+				baseURL,
+				options,
+				normalizeConversationId(conversationId),
+				externalUserId,
+				false,
+			);
+		},
+		async deleteConversation(
+			conversationId: string,
+			externalUserId: string,
+		): Promise<void> {
+			const normalizedConversationId = normalizeConversationId(conversationId);
+			const response = await request(
+				baseURL,
+				options,
+				`/conversations/${encodeURIComponent(normalizedConversationId)}`,
+				{
+					method: "DELETE",
+					searchParams: {
+						externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					},
+				},
+			);
+
+			if (!response.ok) {
+				throw await createRequestError(response, "Portacall request failed.");
+			}
+
+			if (currentConversationId === normalizedConversationId) {
+				currentConversationId = null;
+			}
 		},
 		async chat(
 			message: string,
@@ -171,22 +349,77 @@ export function portacall(
 	};
 }
 
+async function updateConversation(
+	baseURL: string,
+	options: PortacallClientOptions,
+	conversationId: string,
+	body: {
+		externalUserId: string;
+		title: string;
+	},
+): Promise<PortacallConversationSummary> {
+	const response = await request(
+		baseURL,
+		options,
+		`/conversations/${encodeURIComponent(conversationId)}`,
+		{
+			method: "PATCH",
+			body,
+		},
+	);
+
+	if (!response.ok) {
+		throw await createRequestError(response, "Portacall request failed.");
+	}
+
+	const payload = (await response.json()) as PortacallConversationResponse;
+	return payload.conversation;
+}
+
+async function updateConversationArchiveState(
+	baseURL: string,
+	options: PortacallClientOptions,
+	conversationId: string,
+	externalUserId: string,
+	archived: boolean,
+): Promise<PortacallConversationSummary> {
+	const response = await request(
+		baseURL,
+		options,
+		`/conversations/${encodeURIComponent(conversationId)}/archive`,
+		{
+			method: "PATCH",
+			body: {
+				externalUserId: normalizeRequiredExternalUserId(externalUserId),
+				archived,
+			},
+		},
+	);
+
+	if (!response.ok) {
+		throw await createRequestError(response, "Portacall request failed.");
+	}
+
+	const payload = (await response.json()) as PortacallConversationResponse;
+	return payload.conversation;
+}
+
 async function request(
 	baseURL: string,
 	options: PortacallClientOptions,
 	path: string,
 	requestOptions: {
-		body?: {
-			message: string;
-			externalUserId: string;
-			conversationId?: string;
-		};
-		searchParams?: Record<string, string>;
+		method?: "DELETE" | "GET" | "PATCH" | "POST";
+		body?: Record<string, boolean | number | string | undefined>;
+		searchParams?: Record<string, boolean | number | string | undefined>;
 	} = {},
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
+	const method =
+		requestOptions.method ?? (requestOptions.body ? "POST" : "GET");
+
 	return fetchImpl(createURL(baseURL, path, requestOptions.searchParams), {
-		method: requestOptions.body ? "POST" : "GET",
+		method,
 		headers: {
 			...(requestOptions.body
 				? { "content-type": "application/json; charset=utf-8" }
@@ -194,7 +427,7 @@ async function request(
 			...options.headers,
 		},
 		...(requestOptions.body
-			? { body: JSON.stringify(requestOptions.body) }
+			? { body: JSON.stringify(stripUndefinedProperties(requestOptions.body)) }
 			: {}),
 	});
 }
@@ -223,6 +456,26 @@ function normalizeAgentId(agentId: string): string {
 function normalizeBackendURL(backendURL: string | undefined): string {
 	const value = backendURL?.trim() ?? DEFAULT_BACKEND_URL;
 	return stripTrailingSlash(value);
+}
+
+function normalizeConversationId(
+	conversationId: string | null | undefined,
+): string {
+	const value = conversationId?.trim();
+	if (!value) {
+		throw new Error("Conversation ID is required.");
+	}
+
+	return value;
+}
+
+function normalizeRequiredTitle(title: string | null | undefined): string {
+	const value = title?.trim();
+	if (!value) {
+		throw new Error("Title is required.");
+	}
+
+	return value;
 }
 
 function createBaseURL(backendURL: string, agentId: string): string {
@@ -254,6 +507,41 @@ function createChatBody(
 	};
 }
 
+function createConversationListSearchParams(
+	externalUserId: string,
+	options: PortacallConversationListOptions,
+): Record<string, boolean | number | string | undefined> {
+	return {
+		externalUserId: normalizeRequiredExternalUserId(externalUserId),
+		limit: normalizeOptionalLimit(options.limit),
+		offset: normalizeOptionalOffset(options.offset),
+		includeArchived: options.includeArchived,
+	};
+}
+
+function createConversationMessagesSearchParams(
+	externalUserId: string,
+	options: PortacallConversationMessagesOptions,
+): Record<string, boolean | number | string | undefined> {
+	return {
+		externalUserId: normalizeRequiredExternalUserId(externalUserId),
+		limit: normalizeOptionalLimit(options.limit),
+		offset: normalizeOptionalOffset(options.offset),
+	};
+}
+
+function createOptionalTitleBody(title: string | null | undefined): {
+	title?: string;
+} {
+	if (title == null) {
+		return {};
+	}
+
+	return {
+		title: normalizeRequiredTitle(title),
+	};
+}
+
 function normalizeRequiredExternalUserId(
 	externalUserId: string | null | undefined,
 ): string {
@@ -265,14 +553,42 @@ function normalizeRequiredExternalUserId(
 	return value;
 }
 
+function normalizeOptionalLimit(limit: number | undefined): number | undefined {
+	if (limit === undefined) {
+		return undefined;
+	}
+
+	if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+		throw new Error("Limit must be an integer between 1 and 100.");
+	}
+
+	return limit;
+}
+
+function normalizeOptionalOffset(
+	offset: number | undefined,
+): number | undefined {
+	if (offset === undefined) {
+		return undefined;
+	}
+
+	if (!Number.isInteger(offset) || offset < 0) {
+		throw new Error("Offset must be a non-negative integer.");
+	}
+
+	return offset;
+}
+
 function createURL(
 	baseURL: string,
 	path: string,
-	searchParams?: Record<string, string>,
+	searchParams?: Record<string, boolean | number | string | undefined>,
 ): string {
+	const serializedSearchParams = serializeSearchParams(searchParams);
+
 	if (/^https?:\/\//.test(baseURL)) {
 		const url = new URL(stripLeadingSlash(path), `${baseURL}/`);
-		for (const [key, value] of Object.entries(searchParams ?? {})) {
+		for (const [key, value] of serializedSearchParams.entries()) {
 			url.searchParams.set(key, value);
 		}
 
@@ -280,11 +596,36 @@ function createURL(
 	}
 
 	const resolvedPath = `${stripTrailingSlash(baseURL)}${path}`;
-	if (!searchParams || Object.keys(searchParams).length === 0) {
+	const queryString = serializedSearchParams.toString();
+	if (!queryString) {
 		return resolvedPath;
 	}
 
-	return `${resolvedPath}?${new URLSearchParams(searchParams).toString()}`;
+	return `${resolvedPath}?${queryString}`;
+}
+
+function serializeSearchParams(
+	searchParams?: Record<string, boolean | number | string | undefined>,
+): URLSearchParams {
+	const serialized = new URLSearchParams();
+
+	for (const [key, value] of Object.entries(searchParams ?? {})) {
+		if (value === undefined) {
+			continue;
+		}
+
+		serialized.set(key, String(value));
+	}
+
+	return serialized;
+}
+
+function stripUndefinedProperties<T extends Record<string, unknown>>(
+	value: T,
+): Record<string, unknown> {
+	return Object.fromEntries(
+		Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+	);
 }
 
 function stripLeadingSlash(value: string): string {

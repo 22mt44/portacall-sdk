@@ -11,13 +11,35 @@ export type PortacallOptions = {
 
 export type PortacallConversationSummary = {
 	id: string;
+	title: string | null;
 	createdAt: string;
 	updatedAt: string;
 	lastMessageAt: string;
+	archivedAt: string | null;
+};
+
+export type PortacallConversationPagination = {
+	limit: number;
+	offset: number;
+	hasMore: boolean;
 };
 
 export type PortacallConversationListResponse = {
 	conversations: PortacallConversationSummary[];
+	pagination: PortacallConversationPagination;
+};
+
+export type PortacallConversationMessage = {
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	createdAt: string;
+};
+
+export type PortacallConversationMessagesResponse = {
+	conversation: PortacallConversationSummary;
+	messages: PortacallConversationMessage[];
+	pagination: PortacallConversationPagination;
 };
 
 export type Portacall = {

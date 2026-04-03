@@ -5,6 +5,9 @@ export { portacall } from "./portacall";
 export type {
 	Portacall,
 	PortacallConversationListResponse,
+	PortacallConversationMessage,
+	PortacallConversationMessagesResponse,
+	PortacallConversationPagination,
 	PortacallConversationSummary,
 	PortacallFetch,
 	PortacallOptions,

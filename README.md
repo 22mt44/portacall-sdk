@@ -20,7 +20,18 @@ const content = await agent.chat("Hello", {
   externalUserId: session.user.id,
 });
 
-const conversations = await agent.getConversations(session.user.id);
+const conversation = await agent.createConversation(session.user.id, {
+  title: "Support thread",
+});
+
+const conversations = await agent.getConversations(session.user.id, {
+  limit: 20,
+});
+
+const history = await agent.getConversationMessages(
+  conversation.id,
+  session.user.id,
+);
 ```
 
 ## Backend package
@@ -45,7 +56,9 @@ app.all("/api/portacall/*", (c) => proxy.handler(c.req.raw));
 Portacall conversations are user-scoped:
 
 - `POST /chat` and `POST /stream` must include `externalUserId`
-- `GET /conversations` must include `externalUserId` as a query parameter
+- `GET /conversations` and `GET /conversations/:conversationId/messages` must include `externalUserId` as a query parameter
+- `POST /conversations`, `PATCH /conversations/:conversationId`, and `PATCH /conversations/:conversationId/archive` include `externalUserId` in the JSON body
+- `DELETE /conversations/:conversationId` requires `externalUserId` in the query string
 - a `conversationId` can only be resumed by the same `externalUserId`
 
 ## Workspace commands

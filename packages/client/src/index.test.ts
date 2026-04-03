@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { portacall } from "./index";
 
+const conversationId = "18e40f1f-490d-4ee9-9d31-c6da546dac66";
+
 describe("portacall client", () => {
 	test("health reads backend health status", async () => {
 		let receivedURL = "";
@@ -26,6 +28,59 @@ describe("portacall client", () => {
 		);
 	});
 
+	test("createConversation creates a titled conversation and stores the ID", async () => {
+		let receivedURL = "";
+		let receivedInit: RequestInit | undefined;
+
+		const agent = portacall("https://example.com", "agent_123", {
+			fetch: async (input, init) => {
+				receivedURL = String(input);
+				receivedInit = init;
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 201,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await expect(
+			agent.createConversation("  user_123  ", {
+				title: "  Support thread  ",
+			}),
+		).resolves.toEqual({
+			id: conversationId,
+			title: "Support thread",
+			createdAt: "2026-03-27T10:00:00.000Z",
+			updatedAt: "2026-03-27T10:05:00.000Z",
+			lastMessageAt: "2026-03-27T10:05:00.000Z",
+			archivedAt: null,
+		});
+		expect(agent.conversationId).toBe(conversationId);
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/conversations",
+		);
+		expect(receivedInit?.method).toBe("POST");
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({
+				externalUserId: "user_123",
+				title: "Support thread",
+			}),
+		);
+	});
+
 	test("chat sends a request and returns content", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
@@ -38,7 +93,7 @@ describe("portacall client", () => {
 				return new Response(
 					JSON.stringify({
 						content: "Hello from client",
-						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+						conversationId,
 					}),
 					{
 						status: 200,
@@ -78,7 +133,7 @@ describe("portacall client", () => {
 				return new Response(
 					JSON.stringify({
 						content: "Hello from client",
-						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+						conversationId,
 					}),
 					{
 						status: 200,
@@ -186,8 +241,7 @@ describe("portacall client", () => {
 						status: 200,
 						headers: {
 							"content-type": "text/plain; charset=utf-8",
-							"x-portacall-conversation-id":
-								"18e40f1f-490d-4ee9-9d31-c6da546dac66",
+							"x-portacall-conversation-id": conversationId,
 						},
 					},
 				);
@@ -215,9 +269,10 @@ describe("portacall client", () => {
 				externalUserId: "user_123",
 			}),
 		);
+		expect(agent.conversationId).toBe(conversationId);
 	});
 
-	test("getConversations requests user-scoped conversation summaries", async () => {
+	test("getConversations requests paginated user-scoped conversation summaries", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 
@@ -230,12 +285,19 @@ describe("portacall client", () => {
 					JSON.stringify({
 						conversations: [
 							{
-								id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+								id: conversationId,
+								title: "Support thread",
 								createdAt: "2026-03-27T10:00:00.000Z",
 								updatedAt: "2026-03-27T10:05:00.000Z",
 								lastMessageAt: "2026-03-27T10:05:00.000Z",
+								archivedAt: null,
 							},
 						],
+						pagination: {
+							limit: 25,
+							offset: 10,
+							hasMore: true,
+						},
 					}),
 					{
 						status: 200,
@@ -245,18 +307,251 @@ describe("portacall client", () => {
 			},
 		});
 
-		await expect(agent.getConversations("  user_123  ")).resolves.toEqual([
-			{
-				id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+		await expect(
+			agent.getConversations("  user_123  ", {
+				limit: 25,
+				offset: 10,
+				includeArchived: true,
+			}),
+		).resolves.toEqual({
+			conversations: [
+				{
+					id: conversationId,
+					title: "Support thread",
+					createdAt: "2026-03-27T10:00:00.000Z",
+					updatedAt: "2026-03-27T10:05:00.000Z",
+					lastMessageAt: "2026-03-27T10:05:00.000Z",
+					archivedAt: null,
+				},
+			],
+			pagination: {
+				limit: 25,
+				offset: 10,
+				hasMore: true,
+			},
+		});
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/conversations?externalUserId=user_123&limit=25&offset=10&includeArchived=true",
+		);
+		expect(receivedInit?.method).toBe("GET");
+	});
+
+	test("getConversationMessages loads one conversation and stores the ID", async () => {
+		let receivedURL = "";
+
+		const agent = portacall("https://example.com", "agent_123", {
+			fetch: async (input) => {
+				receivedURL = String(input);
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+						messages: [
+							{
+								id: "f55cf2a2-7067-4437-90cc-51b6d55861e0",
+								role: "user",
+								content: "Hello there",
+								createdAt: "2026-03-27T10:00:00.000Z",
+							},
+						],
+						pagination: {
+							limit: 20,
+							offset: 0,
+							hasMore: false,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await expect(
+			agent.getConversationMessages(conversationId, "user_123", {
+				limit: 20,
+			}),
+		).resolves.toEqual({
+			conversation: {
+				id: conversationId,
+				title: "Support thread",
 				createdAt: "2026-03-27T10:00:00.000Z",
 				updatedAt: "2026-03-27T10:05:00.000Z",
 				lastMessageAt: "2026-03-27T10:05:00.000Z",
+				archivedAt: null,
 			},
-		]);
+			messages: [
+				{
+					id: "f55cf2a2-7067-4437-90cc-51b6d55861e0",
+					role: "user",
+					content: "Hello there",
+					createdAt: "2026-03-27T10:00:00.000Z",
+				},
+			],
+			pagination: {
+				limit: 20,
+				offset: 0,
+				hasMore: false,
+			},
+		});
 		expect(receivedURL).toBe(
-			"https://example.com/api/portacall/agent_123/conversations?externalUserId=user_123",
+			`https://example.com/api/portacall/agent_123/conversations/${conversationId}/messages?externalUserId=user_123&limit=20`,
 		);
-		expect(receivedInit?.method).toBe("GET");
+		expect(agent.conversationId).toBe(conversationId);
+	});
+
+	test("renameConversation renames a conversation", async () => {
+		let receivedInit: RequestInit | undefined;
+
+		const agent = portacall("https://example.com", "agent_123", {
+			fetch: async (_, init) => {
+				receivedInit = init;
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Renamed thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await expect(
+			agent.renameConversation(
+				conversationId,
+				"user_123",
+				"  Renamed thread  ",
+			),
+		).resolves.toEqual({
+			id: conversationId,
+			title: "Renamed thread",
+			createdAt: "2026-03-27T10:00:00.000Z",
+			updatedAt: "2026-03-27T10:05:00.000Z",
+			lastMessageAt: "2026-03-27T10:05:00.000Z",
+			archivedAt: null,
+		});
+		expect(receivedInit?.method).toBe("PATCH");
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({
+				externalUserId: "user_123",
+				title: "Renamed thread",
+			}),
+		);
+	});
+
+	test("archiveConversation and unarchiveConversation toggle archive state", async () => {
+		const bodies: string[] = [];
+		let archived = true;
+
+		const agent = portacall("https://example.com", "agent_123", {
+			fetch: async (_, init) => {
+				bodies.push(String(init?.body ?? ""));
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: archived ? "2026-03-27T10:10:00.000Z" : null,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await expect(
+			agent.archiveConversation(conversationId, "user_123"),
+		).resolves.toMatchObject({
+			id: conversationId,
+			archivedAt: "2026-03-27T10:10:00.000Z",
+		});
+
+		archived = false;
+
+		await expect(
+			agent.unarchiveConversation(conversationId, "user_123"),
+		).resolves.toMatchObject({
+			id: conversationId,
+			archivedAt: null,
+		});
+
+		expect(bodies).toEqual([
+			JSON.stringify({
+				externalUserId: "user_123",
+				archived: true,
+			}),
+			JSON.stringify({
+				externalUserId: "user_123",
+				archived: false,
+			}),
+		]);
+	});
+
+	test("deleteConversation deletes the active conversation and resets state", async () => {
+		let receivedURL = "";
+
+		const agent = portacall("https://example.com", "agent_123", {
+			fetch: async (input, init) => {
+				receivedURL = String(input);
+
+				if (init?.method === "DELETE") {
+					return new Response(JSON.stringify({ deleted: true }), {
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					});
+				}
+
+				return new Response(
+					JSON.stringify({
+						conversation: {
+							id: conversationId,
+							title: null,
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:05:00.000Z",
+							lastMessageAt: "2026-03-27T10:05:00.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 201,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await agent.createConversation("user_123");
+		await agent.deleteConversation(conversationId, "user_123");
+
+		expect(receivedURL).toBe(
+			`https://example.com/api/portacall/agent_123/conversations/${conversationId}?externalUserId=user_123`,
+		);
+		expect(agent.conversationId).toBeNull();
 	});
 
 	test("getConversations rejects an empty external user ID", async () => {

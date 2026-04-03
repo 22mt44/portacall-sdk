@@ -3,6 +3,8 @@ import { createRequestError, normalizeMessage } from "./shared";
 import type {
 	Portacall,
 	PortacallConversationListResponse,
+	PortacallConversationMessagesResponse,
+	PortacallConversationSummary,
 	PortacallOptions,
 } from "./types";
 
@@ -11,6 +13,10 @@ const DEFAULT_BASE_URL = "https://api.portacall.ai";
 type ChatResponse = {
 	content: string;
 	conversationId: string;
+};
+
+type PortacallConversationResponse = {
+	conversation: PortacallConversationSummary;
 };
 
 type ChatRequestBody = {
@@ -35,12 +41,9 @@ export function portacall(
 		externalUserId: string,
 		conversationId?: string,
 	): Promise<ChatResponse> => {
-		const response = await requestPortacall(
-			proxyOptions,
-			agentId,
-			"/chat",
-			createChatRequestBody(message, externalUserId, conversationId),
-		);
+		const response = await requestPortacall(proxyOptions, agentId, "/chat", {
+			body: createChatRequestBody(message, externalUserId, conversationId),
+		});
 
 		if (!response.ok) {
 			throw await createRequestError(response, "Portacall request failed.");
@@ -49,17 +52,51 @@ export function portacall(
 		return (await response.json()) as ChatResponse;
 	};
 
+	const createConversation = async (
+		agentId: string,
+		externalUserId: string,
+		title?: string,
+	): Promise<PortacallConversationSummary> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			"/conversations",
+			{
+				body: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					...(title ? { title: normalizeRequiredTitle(title) } : {}),
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		const payload = (await response.json()) as PortacallConversationResponse;
+		return payload.conversation;
+	};
+
 	const listConversations = async (
 		agentId: string,
 		externalUserId: string,
+		options: {
+			limit?: number;
+			offset?: number;
+			includeArchived?: boolean;
+		} = {},
 	): Promise<PortacallConversationListResponse> => {
 		const response = await requestPortacall(
 			proxyOptions,
 			agentId,
 			"/conversations",
-			undefined,
 			{
-				externalUserId: normalizeRequiredExternalUserId(externalUserId),
+				searchParams: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					limit: normalizeOptionalLimit(options.limit),
+					offset: normalizeOptionalOffset(options.offset),
+					includeArchived: options.includeArchived,
+				},
 			},
 		);
 
@@ -70,12 +107,121 @@ export function portacall(
 		return (await response.json()) as PortacallConversationListResponse;
 	};
 
+	const getConversationMessages = async (
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+		options: {
+			limit?: number;
+			offset?: number;
+		} = {},
+	): Promise<PortacallConversationMessagesResponse> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/conversations/${encodeURIComponent(normalizeConversationId(conversationId))}/messages`,
+			{
+				searchParams: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					limit: normalizeOptionalLimit(options.limit),
+					offset: normalizeOptionalOffset(options.offset),
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		return (await response.json()) as PortacallConversationMessagesResponse;
+	};
+
+	const renameConversation = async (
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+		title: string,
+	): Promise<PortacallConversationSummary> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/conversations/${encodeURIComponent(normalizeConversationId(conversationId))}`,
+			{
+				method: "PATCH",
+				body: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					title: normalizeRequiredTitle(title),
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		const payload = (await response.json()) as PortacallConversationResponse;
+		return payload.conversation;
+	};
+
+	const setConversationArchived = async (
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+		archived: boolean,
+	): Promise<PortacallConversationSummary> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/conversations/${encodeURIComponent(normalizeConversationId(conversationId))}/archive`,
+			{
+				method: "PATCH",
+				body: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					archived,
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		const payload = (await response.json()) as PortacallConversationResponse;
+		return payload.conversation;
+	};
+
+	const deleteConversation = async (
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+	): Promise<void> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/conversations/${encodeURIComponent(normalizeConversationId(conversationId))}`,
+			{
+				method: "DELETE",
+				searchParams: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+	};
+
 	return {
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
 					configured,
 					chat,
+					createConversation,
+					deleteConversation,
+					getConversationMessages,
+					listConversations,
 					openStream: (agentId, message, externalUserId, conversationId) =>
 						openStream(
 							proxyOptions,
@@ -84,7 +230,8 @@ export function portacall(
 							externalUserId,
 							conversationId,
 						),
-					listConversations,
+					renameConversation,
+					setConversationArchived,
 				},
 				request,
 			);
@@ -96,14 +243,18 @@ function createPortacallURL(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	path: string,
-	searchParams?: Record<string, string>,
+	searchParams?: Record<string, boolean | number | string | undefined>,
 ): string {
 	const url = new URL(
 		`/api/portacall/${encodeURIComponent(agentId)}${path}`,
 		options.baseURL ?? DEFAULT_BASE_URL,
 	);
 	for (const [key, value] of Object.entries(searchParams ?? {})) {
-		url.searchParams.set(key, value);
+		if (value === undefined) {
+			continue;
+		}
+
+		url.searchParams.set(key, String(value));
 	}
 
 	return url.toString();
@@ -113,19 +264,34 @@ async function requestPortacall(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	path: string,
-	body?: ChatRequestBody,
-	searchParams?: Record<string, string>,
+	requestOptions: {
+		method?: "DELETE" | "GET" | "PATCH" | "POST";
+		body?: Record<string, boolean | number | string | undefined>;
+		searchParams?: Record<string, boolean | number | string | undefined>;
+	} = {},
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
-	return fetchImpl(createPortacallURL(options, agentId, path, searchParams), {
-		method: body ? "POST" : "GET",
-		headers: {
-			...(body ? { "content-type": "application/json; charset=utf-8" } : {}),
-			authorization: `Bearer ${options.secretKey}`,
-			...options.headers,
+	const method =
+		requestOptions.method ?? (requestOptions.body ? "POST" : "GET");
+
+	return fetchImpl(
+		createPortacallURL(options, agentId, path, requestOptions.searchParams),
+		{
+			method,
+			headers: {
+				...(requestOptions.body
+					? { "content-type": "application/json; charset=utf-8" }
+					: {}),
+				authorization: `Bearer ${options.secretKey}`,
+				...options.headers,
+			},
+			...(requestOptions.body
+				? {
+						body: JSON.stringify(stripUndefinedProperties(requestOptions.body)),
+					}
+				: {}),
 		},
-		...(body ? { body: JSON.stringify(body) } : {}),
-	});
+	);
 }
 
 async function openStream(
@@ -135,12 +301,9 @@ async function openStream(
 	externalUserId: string,
 	conversationId?: string,
 ): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }> {
-	const response = await requestPortacall(
-		options,
-		agentId,
-		"/stream",
-		createChatRequestBody(message, externalUserId, conversationId),
-	);
+	const response = await requestPortacall(options, agentId, "/stream", {
+		body: createChatRequestBody(message, externalUserId, conversationId),
+	});
 
 	if (!response.ok) {
 		throw await createRequestError(response, "Portacall request failed.");
@@ -174,6 +337,17 @@ function createChatRequestBody(
 	};
 }
 
+function normalizeConversationId(
+	conversationId: string | null | undefined,
+): string {
+	const value = conversationId?.trim();
+	if (!value) {
+		throw new Error("Conversation ID is required.");
+	}
+
+	return value;
+}
+
 function normalizeRequiredExternalUserId(
 	externalUserId: string | null | undefined,
 ): string {
@@ -183,4 +357,47 @@ function normalizeRequiredExternalUserId(
 	}
 
 	return value;
+}
+
+function normalizeRequiredTitle(title: string | null | undefined): string {
+	const value = title?.trim();
+	if (!value) {
+		throw new Error("Title is required.");
+	}
+
+	return value;
+}
+
+function normalizeOptionalLimit(limit: number | undefined): number | undefined {
+	if (limit === undefined) {
+		return undefined;
+	}
+
+	if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+		throw new Error("Limit must be an integer between 1 and 100.");
+	}
+
+	return limit;
+}
+
+function normalizeOptionalOffset(
+	offset: number | undefined,
+): number | undefined {
+	if (offset === undefined) {
+		return undefined;
+	}
+
+	if (!Number.isInteger(offset) || offset < 0) {
+		throw new Error("Offset must be a non-negative integer.");
+	}
+
+	return offset;
+}
+
+function stripUndefinedProperties(
+	value: Record<string, boolean | number | string | undefined>,
+): Record<string, boolean | number | string> {
+	return Object.fromEntries(
+		Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+	) as Record<string, boolean | number | string>;
 }
