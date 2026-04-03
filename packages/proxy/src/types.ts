@@ -9,6 +9,17 @@ export type PortacallOptions = {
 	fetch?: PortacallFetch;
 };
 
+export type PortacallConversationSummary = {
+	id: string;
+	createdAt: string;
+	updatedAt: string;
+	lastMessageAt: string;
+};
+
+export type PortacallConversationListResponse = {
+	conversations: PortacallConversationSummary[];
+};
+
 export type Portacall = {
 	handler(request: Request): Promise<Response>;
 };

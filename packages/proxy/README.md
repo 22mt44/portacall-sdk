@@ -33,6 +33,17 @@ const app = new Hono();
 app.all("/api/portacall/*", (c) => proxy.handler(c.req.raw));
 ```
 
+The proxy handles these route shapes:
+
+- `GET /api/portacall/:agentId/health`
+- `GET /api/portacall/:agentId/conversations?externalUserId=...`
+- `POST /api/portacall/:agentId/chat`
+- `POST /api/portacall/:agentId/stream`
+
+Chat and stream requests must include `externalUserId` in the JSON body. The
+same `externalUserId` is required later if the client resumes a saved
+`conversationId`.
+
 ## Adapters
 
 ```ts

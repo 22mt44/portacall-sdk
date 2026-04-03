@@ -1,15 +1,23 @@
+import type { PortacallConversationListResponse } from "./types";
+
 type PortacallProxyHandler = {
 	configured: boolean;
 	chat(
 		agentId: string,
 		message: string,
+		externalUserId: string,
 		conversationId?: string,
 	): Promise<{ content: string; conversationId: string }>;
 	openStream(
 		agentId: string,
 		message: string,
+		externalUserId: string,
 		conversationId?: string,
 	): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }>;
+	listConversations(
+		agentId: string,
+		externalUserId: string,
+	): Promise<PortacallConversationListResponse>;
 };
 
 const STREAM_HEADERS = {
@@ -35,6 +43,29 @@ export async function handlePortacallRequest(
 			: methodNotAllowed("GET");
 	}
 
+	if (route.action === "conversations") {
+		if (request.method !== "GET") {
+			return methodNotAllowed("GET");
+		}
+
+		if (!portacall.configured) {
+			return missingConfiguration();
+		}
+
+		const externalUserId = readExternalUserId(url.searchParams);
+		if (!externalUserId) {
+			return json({ message: "External user ID is required." }, 400);
+		}
+
+		try {
+			return json(
+				await portacall.listConversations(route.agentId, externalUserId),
+			);
+		} catch (error) {
+			return errorResponse(error);
+		}
+	}
+
 	if (route.action === "chat") {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
@@ -48,11 +79,15 @@ export async function handlePortacallRequest(
 		if (!payload) {
 			return json({ message: "Message is required." }, 400);
 		}
+		if ("error" in payload) {
+			return json({ message: payload.error }, 400);
+		}
 
 		try {
 			const response = await portacall.chat(
 				route.agentId,
 				payload.message,
+				payload.externalUserId,
 				payload.conversationId,
 			);
 			return json(response);
@@ -74,11 +109,15 @@ export async function handlePortacallRequest(
 		if (!payload) {
 			return json({ message: "Message is required." }, 400);
 		}
+		if ("error" in payload) {
+			return json({ message: payload.error }, 400);
+		}
 
 		try {
 			const response = await portacall.openStream(
 				route.agentId,
 				payload.message,
+				payload.externalUserId,
 				payload.conversationId,
 			);
 			return new Response(response.stream, {
@@ -95,12 +134,19 @@ export async function handlePortacallRequest(
 	return json({ message: "Not found." }, 404);
 }
 
-async function readChatInput(
-	request: Request,
-): Promise<{ message: string; conversationId?: string } | null> {
+async function readChatInput(request: Request): Promise<
+	| {
+			message: string;
+			conversationId?: string;
+			externalUserId: string;
+	  }
+	| { error: string }
+	| null
+> {
 	const payload = (await request.json().catch(() => null)) as {
 		message?: string;
 		conversationId?: string;
+		externalUserId?: string;
 	} | null;
 	const message = payload?.message?.trim();
 	if (!message) {
@@ -108,7 +154,21 @@ async function readChatInput(
 	}
 
 	const conversationId = payload?.conversationId?.trim();
-	return conversationId ? { message, conversationId } : { message };
+	const externalUserId = payload?.externalUserId?.trim();
+	if (!externalUserId) {
+		return { error: "External user ID is required." };
+	}
+
+	return {
+		message,
+		externalUserId,
+		...(conversationId ? { conversationId } : {}),
+	};
+}
+
+function readExternalUserId(searchParams: URLSearchParams): string | null {
+	const value = searchParams.get("externalUserId")?.trim();
+	return value || null;
 }
 
 function missingConfiguration(): Response {
@@ -153,16 +213,22 @@ function trimTrailingSlash(pathname: string): string {
 		: pathname;
 }
 
-function matchPortacallRoute(
-	pathname: string,
-): { agentId: string; action: "health" | "chat" | "stream" } | null {
+function matchPortacallRoute(pathname: string): {
+	agentId: string;
+	action: "health" | "chat" | "stream" | "conversations";
+} | null {
 	const segments = pathname.split("/").filter(Boolean);
 	if (segments.length < 4) {
 		return null;
 	}
 
 	const action = segments[segments.length - 1];
-	if (action !== "health" && action !== "chat" && action !== "stream") {
+	if (
+		action !== "health" &&
+		action !== "chat" &&
+		action !== "stream" &&
+		action !== "conversations"
+	) {
 		return null;
 	}
 

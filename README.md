@@ -15,6 +15,12 @@ Monorepo for the published Portacall SDK packages.
 import { portacall } from "@portacall/client";
 
 export const agent = portacall("http://localhost:4000", "demo-agent");
+
+const content = await agent.chat("Hello", {
+  externalUserId: session.user.id,
+});
+
+const conversations = await agent.getConversations(session.user.id);
 ```
 
 ## Backend package
@@ -35,6 +41,12 @@ const app = new Hono();
 
 app.all("/api/portacall/*", (c) => proxy.handler(c.req.raw));
 ```
+
+Portacall conversations are user-scoped:
+
+- `POST /chat` and `POST /stream` must include `externalUserId`
+- `GET /conversations` must include `externalUserId` as a query parameter
+- a `conversationId` can only be resumed by the same `externalUserId`
 
 ## Workspace commands
 

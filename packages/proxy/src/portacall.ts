@@ -1,12 +1,22 @@
 import { handlePortacallRequest } from "./handler";
 import { createRequestError, normalizeMessage } from "./shared";
-import type { Portacall, PortacallOptions } from "./types";
+import type {
+	Portacall,
+	PortacallConversationListResponse,
+	PortacallOptions,
+} from "./types";
 
 const DEFAULT_BASE_URL = "https://api.portacall.ai";
 
 type ChatResponse = {
 	content: string;
 	conversationId: string;
+};
+
+type ChatRequestBody = {
+	message: string;
+	externalUserId: string;
+	conversationId?: string;
 };
 
 export function portacall(
@@ -22,14 +32,14 @@ export function portacall(
 	const chat = async (
 		agentId: string,
 		message: string,
+		externalUserId: string,
 		conversationId?: string,
 	): Promise<ChatResponse> => {
 		const response = await requestPortacall(
 			proxyOptions,
 			agentId,
 			"/chat",
-			message,
-			conversationId,
+			createChatRequestBody(message, externalUserId, conversationId),
 		);
 
 		if (!response.ok) {
@@ -39,14 +49,42 @@ export function portacall(
 		return (await response.json()) as ChatResponse;
 	};
 
+	const listConversations = async (
+		agentId: string,
+		externalUserId: string,
+	): Promise<PortacallConversationListResponse> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			"/conversations",
+			undefined,
+			{
+				externalUserId: normalizeRequiredExternalUserId(externalUserId),
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		return (await response.json()) as PortacallConversationListResponse;
+	};
+
 	return {
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
 					configured,
 					chat,
-					openStream: (agentId, message, conversationId) =>
-						openStream(proxyOptions, agentId, message, conversationId),
+					openStream: (agentId, message, externalUserId, conversationId) =>
+						openStream(
+							proxyOptions,
+							agentId,
+							message,
+							externalUserId,
+							conversationId,
+						),
+					listConversations,
 				},
 				request,
 			);
@@ -58,32 +96,35 @@ function createPortacallURL(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	path: string,
+	searchParams?: Record<string, string>,
 ): string {
-	return new URL(
+	const url = new URL(
 		`/api/portacall/${encodeURIComponent(agentId)}${path}`,
 		options.baseURL ?? DEFAULT_BASE_URL,
-	).toString();
+	);
+	for (const [key, value] of Object.entries(searchParams ?? {})) {
+		url.searchParams.set(key, value);
+	}
+
+	return url.toString();
 }
 
 async function requestPortacall(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	path: string,
-	message: string,
-	conversationId?: string,
+	body?: ChatRequestBody,
+	searchParams?: Record<string, string>,
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
-	return fetchImpl(createPortacallURL(options, agentId, path), {
-		method: "POST",
+	return fetchImpl(createPortacallURL(options, agentId, path, searchParams), {
+		method: body ? "POST" : "GET",
 		headers: {
-			"content-type": "application/json; charset=utf-8",
+			...(body ? { "content-type": "application/json; charset=utf-8" } : {}),
 			authorization: `Bearer ${options.secretKey}`,
 			...options.headers,
 		},
-		body: JSON.stringify({
-			message: normalizeMessage(message),
-			...(conversationId ? { conversationId } : {}),
-		}),
+		...(body ? { body: JSON.stringify(body) } : {}),
 	});
 }
 
@@ -91,14 +132,14 @@ async function openStream(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
 	message: string,
+	externalUserId: string,
 	conversationId?: string,
 ): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }> {
 	const response = await requestPortacall(
 		options,
 		agentId,
 		"/stream",
-		message,
-		conversationId,
+		createChatRequestBody(message, externalUserId, conversationId),
 	);
 
 	if (!response.ok) {
@@ -119,4 +160,27 @@ async function openStream(
 		stream: response.body,
 		conversationId: resolvedConversationId,
 	};
+}
+
+function createChatRequestBody(
+	message: string,
+	externalUserId: string,
+	conversationId?: string,
+): ChatRequestBody {
+	return {
+		message: normalizeMessage(message),
+		externalUserId: normalizeRequiredExternalUserId(externalUserId),
+		...(conversationId ? { conversationId } : {}),
+	};
+}
+
+function normalizeRequiredExternalUserId(
+	externalUserId: string | null | undefined,
+): string {
+	const value = externalUserId?.trim();
+	if (!value) {
+		throw new Error("External user ID is required.");
+	}
+
+	return value;
 }

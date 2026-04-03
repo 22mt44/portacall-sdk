@@ -6,10 +6,10 @@
 		"packages/*"
 	],
 	"scripts": {
-		"build": "turbo run build",
-		"test": "turbo run test",
-		"typecheck": "turbo run typecheck",
-		"lint": "turbo run lint && biome check package.json README.md turbo.json .github/workflows/ci.yml",
+		"build": "turbo build",
+		"test": "turbo test",
+		"typecheck": "turbo typecheck",
+		"lint": "turbo lint && biome check package.json README.md turbo.json .github/workflows/ci.yml",
 		"check": "bun run test && bun run typecheck && bun run lint",
 		"release:client:dry": "npm publish --workspace @portacall/client --dry-run",
 		"release:client": "npm publish --workspace @portacall/client",

@@ -52,10 +52,16 @@ describe("portacall proxy", () => {
 				receivedURL = String(input);
 				receivedInit = init;
 
-				return new Response(JSON.stringify({ content: "Handled by SDK" }), {
-					status: 200,
-					headers: { "content-type": "application/json; charset=utf-8" },
-				});
+				return new Response(
+					JSON.stringify({
+						content: "Handled by SDK",
+						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
 			},
 		});
 
@@ -65,7 +71,10 @@ describe("portacall proxy", () => {
 				headers: {
 					"content-type": "application/json; charset=utf-8",
 				},
-				body: JSON.stringify({ message: "Hello from handler" }),
+				body: JSON.stringify({
+					message: "Hello from handler",
+					externalUserId: "user_123",
+				}),
 			}),
 		);
 
@@ -78,11 +87,133 @@ describe("portacall proxy", () => {
 			authorization: "Bearer sk_test_123",
 		});
 		expect(receivedInit?.body).toBe(
-			JSON.stringify({ message: "Hello from handler" }),
+			JSON.stringify({
+				message: "Hello from handler",
+				externalUserId: "user_123",
+			}),
 		);
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
 			content: "Handled by SDK",
+			conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+		});
+	});
+
+	test("handler proxies conversation list requests to the Portacall API", async () => {
+		let receivedURL = "";
+		let receivedInit: RequestInit | undefined;
+
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async (input, init) => {
+				receivedURL = String(input);
+				receivedInit = init;
+
+				return new Response(
+					JSON.stringify({
+						conversations: [
+							{
+								id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+								createdAt: "2026-03-27T10:00:00.000Z",
+								updatedAt: "2026-03-27T10:05:00.000Z",
+								lastMessageAt: "2026-03-27T10:05:00.000Z",
+							},
+						],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		const response = await proxy.handler(
+			new Request(
+				"https://backend.example.com/api/portacall/agent_123/conversations?externalUserId=user_123",
+			),
+		);
+
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/conversations?externalUserId=user_123",
+		);
+		expect(receivedInit?.method).toBe("GET");
+		expect(receivedInit?.headers).toEqual({
+			authorization: "Bearer sk_test_123",
+		});
+		await expect(response.json()).resolves.toEqual({
+			conversations: [
+				{
+					id: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					createdAt: "2026-03-27T10:00:00.000Z",
+					updatedAt: "2026-03-27T10:05:00.000Z",
+					lastMessageAt: "2026-03-27T10:05:00.000Z",
+				},
+			],
+		});
+	});
+
+	test("handler rejects chat requests without an external user ID", async () => {
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async () => {
+				throw new Error("fetch should not be called");
+			},
+		});
+
+		const response = await proxy.handler(
+			new Request("https://backend.example.com/api/portacall/agent_123/chat", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json; charset=utf-8",
+				},
+				body: JSON.stringify({
+					message: "Hello from handler",
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(400);
+		await expect(response.json()).resolves.toEqual({
+			message: "External user ID is required.",
+		});
+	});
+
+	test("handler preserves upstream wrong-user conversation errors", async () => {
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async () =>
+				new Response(
+					JSON.stringify({
+						message: "Conversation not found.",
+						code: "conversation_not_found",
+					}),
+					{
+						status: 404,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				),
+		});
+
+		const response = await proxy.handler(
+			new Request("https://backend.example.com/api/portacall/agent_123/chat", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json; charset=utf-8",
+				},
+				body: JSON.stringify({
+					message: "Hello from handler",
+					conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					externalUserId: "user_456",
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(404);
+		await expect(response.json()).resolves.toEqual({
+			message: "Conversation not found.",
+			code: "conversation_not_found",
+			status: 404,
 		});
 	});
 
@@ -108,7 +239,11 @@ describe("portacall proxy", () => {
 					}),
 					{
 						status: 200,
-						headers: { "content-type": "text/plain; charset=utf-8" },
+						headers: {
+							"content-type": "text/plain; charset=utf-8",
+							"x-portacall-conversation-id":
+								"18e40f1f-490d-4ee9-9d31-c6da546dac66",
+						},
 					},
 				);
 			},
@@ -122,7 +257,10 @@ describe("portacall proxy", () => {
 					headers: {
 						"content-type": "application/json; charset=utf-8",
 					},
-					body: JSON.stringify({ message: "  Hello there  " }),
+					body: JSON.stringify({
+						message: "  Hello there  ",
+						externalUserId: "  user_123  ",
+					}),
 				},
 			),
 		);
@@ -135,10 +273,18 @@ describe("portacall proxy", () => {
 			"content-type": "application/json; charset=utf-8",
 			authorization: "Bearer sk_test_123",
 		});
-		expect(receivedInit?.body).toBe(JSON.stringify({ message: "Hello there" }));
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({
+				message: "Hello there",
+				externalUserId: "user_123",
+			}),
+		);
 		expect(response.status).toBe(200);
 		expect(response.headers.get("content-type")).toBe(
 			"text/plain; charset=utf-8",
+		);
+		expect(response.headers.get("x-portacall-conversation-id")).toBe(
+			"18e40f1f-490d-4ee9-9d31-c6da546dac66",
 		);
 		expect(await response.text()).toBe("Hello from stream");
 	});
@@ -148,7 +294,10 @@ describe("portacall proxy", () => {
 			baseURL: "https://example.com",
 			fetch: async () =>
 				new Response(
-					JSON.stringify({ content: "Handled by Express adapter" }),
+					JSON.stringify({
+						content: "Handled by Express adapter",
+						conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
+					}),
 					{
 						status: 200,
 						headers: { "content-type": "application/json; charset=utf-8" },
@@ -190,7 +339,10 @@ describe("portacall proxy", () => {
 					host: "example.com",
 					"content-type": "application/json; charset=utf-8",
 				},
-				body: { message: "Hello from express" },
+				body: {
+					message: "Hello from express",
+					externalUserId: "user_123",
+				},
 			},
 			response,
 		);
@@ -202,6 +354,7 @@ describe("portacall proxy", () => {
 		expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
 		expect(JSON.parse(body)).toEqual({
 			content: "Handled by Express adapter",
+			conversationId: "18e40f1f-490d-4ee9-9d31-c6da546dac66",
 		});
 	});
 });

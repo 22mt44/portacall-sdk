@@ -8,11 +8,24 @@ type ChatResponse = {
 	conversationId: string;
 };
 
+export type PortacallConversationSummary = {
+	id: string;
+	createdAt: string;
+	updatedAt: string;
+	lastMessageAt: string;
+};
+
+type PortacallConversationListResponse = {
+	conversations: PortacallConversationSummary[];
+};
+
 export type PortacallChatOptions = {
+	externalUserId: string;
 	conversationId?: string | null;
 };
 
 export type PortacallStreamOptions = {
+	externalUserId: string;
 	conversationId?: string | null;
 	onConversationId?: (conversationId: string) => void;
 };
@@ -42,10 +55,13 @@ export type PortacallClient = {
 	readonly conversationId: string | null;
 	resetConversation(): void;
 	health(): Promise<PortacallClientHealth>;
-	chat(message: string, options?: PortacallChatOptions): Promise<string>;
+	getConversations(
+		externalUserId: string,
+	): Promise<PortacallConversationSummary[]>;
+	chat(message: string, options: PortacallChatOptions): Promise<string>;
 	stream(
 		message: string,
-		options?: PortacallStreamOptions,
+		options: PortacallStreamOptions,
 	): AsyncIterable<string>;
 };
 
@@ -78,15 +94,35 @@ export function portacall(
 
 			return (await response.json()) as PortacallClientHealth;
 		},
+		async getConversations(
+			externalUserId: string,
+		): Promise<PortacallConversationSummary[]> {
+			const response = await request(baseURL, options, "/conversations", {
+				searchParams: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+				},
+			});
+
+			if (!response.ok) {
+				throw await createRequestError(response, "Portacall request failed.");
+			}
+
+			const payload =
+				(await response.json()) as PortacallConversationListResponse;
+			return payload.conversations;
+		},
 		async chat(
 			message: string,
-			chatOptions: PortacallChatOptions = {},
+			chatOptions: PortacallChatOptions,
 		): Promise<string> {
 			const response = await request(baseURL, options, "/chat", {
-				message: normalizeMessage(message),
-				conversationId: resolveConversationId(
-					chatOptions.conversationId,
-					currentConversationId,
+				body: createChatBody(
+					message,
+					chatOptions.externalUserId,
+					resolveConversationId(
+						chatOptions.conversationId,
+						currentConversationId,
+					),
 				),
 			});
 
@@ -100,13 +136,16 @@ export function portacall(
 		},
 		async *stream(
 			message: string,
-			streamOptions: PortacallStreamOptions = {},
+			streamOptions: PortacallStreamOptions,
 		): AsyncIterable<string> {
 			const response = await request(baseURL, options, "/stream", {
-				message: normalizeMessage(message),
-				conversationId: resolveConversationId(
-					streamOptions.conversationId,
-					currentConversationId,
+				body: createChatBody(
+					message,
+					streamOptions.externalUserId,
+					resolveConversationId(
+						streamOptions.conversationId,
+						currentConversationId,
+					),
 				),
 			});
 
@@ -136,16 +175,27 @@ async function request(
 	baseURL: string,
 	options: PortacallClientOptions,
 	path: string,
-	body?: { message: string; conversationId?: string },
+	requestOptions: {
+		body?: {
+			message: string;
+			externalUserId: string;
+			conversationId?: string;
+		};
+		searchParams?: Record<string, string>;
+	} = {},
 ): Promise<Response> {
 	const fetchImpl = options.fetch ?? globalThis.fetch;
-	return fetchImpl(createURL(baseURL, path), {
-		method: body ? "POST" : "GET",
+	return fetchImpl(createURL(baseURL, path, requestOptions.searchParams), {
+		method: requestOptions.body ? "POST" : "GET",
 		headers: {
-			...(body ? { "content-type": "application/json; charset=utf-8" } : {}),
+			...(requestOptions.body
+				? { "content-type": "application/json; charset=utf-8" }
+				: {}),
 			...options.headers,
 		},
-		...(body ? { body: JSON.stringify(body) } : {}),
+		...(requestOptions.body
+			? { body: JSON.stringify(requestOptions.body) }
+			: {}),
 	});
 }
 
@@ -188,12 +238,53 @@ function createBaseURL(backendURL: string, agentId: string): string {
 	return `${backendURL}/${agentPath}`;
 }
 
-function createURL(baseURL: string, path: string): string {
-	if (/^https?:\/\//.test(baseURL)) {
-		return new URL(stripLeadingSlash(path), `${baseURL}/`).toString();
+function createChatBody(
+	message: string,
+	externalUserId: string,
+	conversationId: string | undefined,
+): {
+	message: string;
+	externalUserId: string;
+	conversationId?: string;
+} {
+	return {
+		message: normalizeMessage(message),
+		externalUserId: normalizeRequiredExternalUserId(externalUserId),
+		...(conversationId ? { conversationId } : {}),
+	};
+}
+
+function normalizeRequiredExternalUserId(
+	externalUserId: string | null | undefined,
+): string {
+	const value = externalUserId?.trim();
+	if (!value) {
+		throw new Error("External user ID is required.");
 	}
 
-	return `${stripTrailingSlash(baseURL)}${path}`;
+	return value;
+}
+
+function createURL(
+	baseURL: string,
+	path: string,
+	searchParams?: Record<string, string>,
+): string {
+	if (/^https?:\/\//.test(baseURL)) {
+		const url = new URL(stripLeadingSlash(path), `${baseURL}/`);
+		for (const [key, value] of Object.entries(searchParams ?? {})) {
+			url.searchParams.set(key, value);
+		}
+
+		return url.toString();
+	}
+
+	const resolvedPath = `${stripTrailingSlash(baseURL)}${path}`;
+	if (!searchParams || Object.keys(searchParams).length === 0) {
+		return resolvedPath;
+	}
+
+	return `${resolvedPath}?${new URLSearchParams(searchParams).toString()}`;
 }
 
 function stripLeadingSlash(value: string): string {
