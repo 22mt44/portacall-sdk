@@ -58,6 +58,20 @@ describe("portacall proxy", () => {
 					JSON.stringify({
 						content: "Handled by SDK",
 						conversationId,
+						events: [
+							{
+								type: "conversation_id",
+								conversationId,
+							},
+							{
+								type: "text_delta",
+								text: "Handled by SDK",
+							},
+							{
+								type: "message_completed",
+								conversationId,
+							},
+						],
 					}),
 					{
 						status: 200,
@@ -98,6 +112,20 @@ describe("portacall proxy", () => {
 		await expect(response.json()).resolves.toEqual({
 			content: "Handled by SDK",
 			conversationId,
+			events: [
+				{
+					type: "conversation_id",
+					conversationId,
+				},
+				{
+					type: "text_delta",
+					text: "Handled by SDK",
+				},
+				{
+					type: "message_completed",
+					conversationId,
+				},
+			],
 		});
 	});
 
@@ -377,16 +405,29 @@ describe("portacall proxy", () => {
 				return new Response(
 					new ReadableStream({
 						start(controller) {
-							controller.enqueue(encoder.encode("Hello "));
-							controller.enqueue(encoder.encode("from "));
-							controller.enqueue(encoder.encode("stream"));
+							controller.enqueue(
+								encoder.encode(
+									`event: conversation_id\ndata: ${JSON.stringify({
+										type: "conversation_id",
+										conversationId,
+									})}\n\n`,
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									`event: text_delta\ndata: ${JSON.stringify({
+										type: "text_delta",
+										text: "Hello from stream",
+									})}\n\n`,
+								),
+							);
 							controller.close();
 						},
 					}),
 					{
 						status: 200,
 						headers: {
-							"content-type": "text/plain; charset=utf-8",
+							"content-type": "text/event-stream; charset=utf-8",
 							"x-portacall-conversation-id": conversationId,
 						},
 					},
@@ -415,6 +456,7 @@ describe("portacall proxy", () => {
 		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
+			accept: "text/event-stream",
 			"content-type": "application/json; charset=utf-8",
 			authorization: "Bearer sk_test_123",
 		});
@@ -426,12 +468,14 @@ describe("portacall proxy", () => {
 		);
 		expect(response.status).toBe(200);
 		expect(response.headers.get("content-type")).toBe(
-			"text/plain; charset=utf-8",
+			"text/event-stream; charset=utf-8",
 		);
 		expect(response.headers.get("x-portacall-conversation-id")).toBe(
 			conversationId,
 		);
-		expect(await response.text()).toBe("Hello from stream");
+		await expect(response.text()).resolves.toContain(
+			'"type":"text_delta","text":"Hello from stream"',
+		);
 	});
 
 	test("handler renames, archives, and deletes conversations", async () => {

@@ -13,6 +13,16 @@ const DEFAULT_BASE_URL = "https://api.portacall.ai";
 type ChatResponse = {
 	content: string;
 	conversationId: string;
+	events: Array<{
+		type:
+			| "conversation_id"
+			| "text_delta"
+			| "tool_call_started"
+			| "tool_call_completed"
+			| "tool_call_failed"
+			| "message_completed";
+		[key: string]: unknown;
+	}>;
 };
 
 type PortacallConversationResponse = {
@@ -267,6 +277,7 @@ async function requestPortacall(
 	requestOptions: {
 		method?: "DELETE" | "GET" | "PATCH" | "POST";
 		body?: Record<string, boolean | number | string | undefined>;
+		headers?: Record<string, string>;
 		searchParams?: Record<string, boolean | number | string | undefined>;
 	} = {},
 ): Promise<Response> {
@@ -283,6 +294,7 @@ async function requestPortacall(
 					? { "content-type": "application/json; charset=utf-8" }
 					: {}),
 				authorization: `Bearer ${options.secretKey}`,
+				...requestOptions.headers,
 				...options.headers,
 			},
 			...(requestOptions.body
@@ -300,9 +312,16 @@ async function openStream(
 	message: string,
 	externalUserId: string,
 	conversationId?: string,
-): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }> {
+): Promise<{
+	stream: ReadableStream<Uint8Array>;
+	conversationId: string;
+	responseHeaders: Record<string, string>;
+}> {
 	const response = await requestPortacall(options, agentId, "/stream", {
 		body: createChatRequestBody(message, externalUserId, conversationId),
+		headers: {
+			accept: "text/event-stream",
+		},
 	});
 
 	if (!response.ok) {
@@ -322,6 +341,18 @@ async function openStream(
 	return {
 		stream: response.body,
 		conversationId: resolvedConversationId,
+		responseHeaders: createStreamResponseHeaders(response.headers),
+	};
+}
+
+function createStreamResponseHeaders(headers: Headers): Record<string, string> {
+	return {
+		"cache-control":
+			headers.get("cache-control")?.trim() ?? "no-cache, no-transform",
+		"content-type":
+			headers.get("content-type")?.trim() ?? "text/event-stream; charset=utf-8",
+		"x-content-type-options":
+			headers.get("x-content-type-options")?.trim() ?? "nosniff",
 	};
 }
 

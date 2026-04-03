@@ -94,6 +94,20 @@ describe("portacall client", () => {
 					JSON.stringify({
 						content: "Hello from client",
 						conversationId,
+						events: [
+							{
+								type: "conversation_id",
+								conversationId,
+							},
+							{
+								type: "text_delta",
+								text: "Hello from client",
+							},
+							{
+								type: "message_completed",
+								conversationId,
+							},
+						],
 					}),
 					{
 						status: 200,
@@ -103,11 +117,28 @@ describe("portacall client", () => {
 			},
 		});
 
-		const content = await agent.chat("  Hello there  ", {
+		const result = await agent.chat("  Hello there  ", {
 			externalUserId: "  user_123  ",
 		});
 
-		expect(content).toBe("Hello from client");
+		expect(result).toEqual({
+			content: "Hello from client",
+			conversationId,
+			events: [
+				{
+					type: "conversation_id",
+					conversationId,
+				},
+				{
+					type: "text_delta",
+					text: "Hello from client",
+				},
+				{
+					type: "message_completed",
+					conversationId,
+				},
+			],
+		});
 		expect(receivedURL).toBe(
 			"https://example.com/api/portacall/agent_123/chat",
 		);
@@ -218,7 +249,7 @@ describe("portacall client", () => {
 		}
 	});
 
-	test("stream sends a request and yields chunks", async () => {
+	test("stream sends a request and yields structured events", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 		const encoder = new TextEncoder();
@@ -231,16 +262,55 @@ describe("portacall client", () => {
 				return new Response(
 					new ReadableStream({
 						start(controller) {
-							controller.enqueue(encoder.encode("Hello "));
-							controller.enqueue(encoder.encode("from "));
-							controller.enqueue(encoder.encode("client"));
+							controller.enqueue(
+								encoder.encode(
+									`event: conversation_id\ndata: ${JSON.stringify({
+										type: "conversation_id",
+										conversationId,
+									})}\n\n`,
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									`event: text_delta\ndata: ${JSON.stringify({
+										type: "text_delta",
+										text: "Hello ",
+									})}\n\n`,
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									`event: tool_call_started\ndata: ${JSON.stringify({
+										type: "tool_call_started",
+										toolCallId: "call_123",
+										toolName: "send_email",
+										args: { subject: "Welcome" },
+									})}\n\n`,
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									`event: text_delta\ndata: ${JSON.stringify({
+										type: "text_delta",
+										text: "from client",
+									})}\n\n`,
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									`event: message_completed\ndata: ${JSON.stringify({
+										type: "message_completed",
+										conversationId,
+									})}\n\n`,
+								),
+							);
 							controller.close();
 						},
 					}),
 					{
 						status: 200,
 						headers: {
-							"content-type": "text/plain; charset=utf-8",
+							"content-type": "text/event-stream; charset=utf-8",
 							"x-portacall-conversation-id": conversationId,
 						},
 					},
@@ -248,19 +318,43 @@ describe("portacall client", () => {
 			},
 		});
 
-		const chunks: string[] = [];
-		for await (const chunk of agent.stream("  Hello there  ", {
+		const events = [];
+		for await (const event of agent.stream("  Hello there  ", {
 			externalUserId: "  user_123  ",
 		})) {
-			chunks.push(chunk);
+			events.push(event);
 		}
 
-		expect(chunks).toEqual(["Hello ", "from ", "client"]);
+		expect(events).toEqual([
+			{
+				type: "conversation_id",
+				conversationId,
+			},
+			{
+				type: "text_delta",
+				text: "Hello ",
+			},
+			{
+				type: "tool_call_started",
+				toolCallId: "call_123",
+				toolName: "send_email",
+				args: { subject: "Welcome" },
+			},
+			{
+				type: "text_delta",
+				text: "from client",
+			},
+			{
+				type: "message_completed",
+				conversationId,
+			},
+		]);
 		expect(receivedURL).toBe(
 			"https://example.com/api/portacall/agent_123/stream",
 		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({
+			accept: "text/event-stream",
 			"content-type": "application/json; charset=utf-8",
 		});
 		expect(receivedInit?.body).toBe(

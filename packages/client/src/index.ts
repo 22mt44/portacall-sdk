@@ -1,11 +1,16 @@
 import { PortacallError } from "./errors";
-import { createRequestError, normalizeMessage, readTextStream } from "./shared";
+import {
+	createRequestError,
+	normalizeMessage,
+	readServerSentEvents,
+} from "./shared";
 
 const DEFAULT_BACKEND_URL = "";
 
 type ChatResponse = {
 	content: string;
 	conversationId: string;
+	events: PortacallChatEvent[];
 };
 
 type PortacallConversationResponse = {
@@ -61,11 +66,77 @@ export type PortacallChatOptions = {
 	conversationId?: string | null;
 };
 
+export type PortacallChatEvent = Exclude<
+	PortacallStreamEvent,
+	PortacallStreamErrorEvent
+>;
+
+export type PortacallChatResult = {
+	content: string;
+	conversationId: string;
+	events: PortacallChatEvent[];
+};
+
 export type PortacallStreamOptions = {
 	externalUserId: string;
 	conversationId?: string | null;
-	onConversationId?: (conversationId: string) => void;
 };
+
+export type PortacallStreamConversationIdEvent = {
+	type: "conversation_id";
+	conversationId: string;
+};
+
+export type PortacallStreamTextDeltaEvent = {
+	type: "text_delta";
+	text: string;
+};
+
+export type PortacallStreamToolCallStartedEvent = {
+	type: "tool_call_started";
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+};
+
+export type PortacallStreamToolCallCompletedEvent = {
+	type: "tool_call_completed";
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+	status: "accepted" | "completed";
+	message?: string;
+	output?: unknown;
+};
+
+export type PortacallStreamToolCallFailedEvent = {
+	type: "tool_call_failed";
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+	message: string;
+	code?: string;
+};
+
+export type PortacallStreamMessageCompletedEvent = {
+	type: "message_completed";
+	conversationId: string;
+};
+
+export type PortacallStreamErrorEvent = {
+	type: "error";
+	message: string;
+	code?: string;
+};
+
+export type PortacallStreamEvent =
+	| PortacallStreamConversationIdEvent
+	| PortacallStreamTextDeltaEvent
+	| PortacallStreamToolCallStartedEvent
+	| PortacallStreamToolCallCompletedEvent
+	| PortacallStreamToolCallFailedEvent
+	| PortacallStreamMessageCompletedEvent
+	| PortacallStreamErrorEvent;
 
 export type PortacallConversationCreateOptions = {
 	title?: string | null;
@@ -126,11 +197,14 @@ export type PortacallClient = {
 		conversationId: string,
 		externalUserId: string,
 	): Promise<void>;
-	chat(message: string, options: PortacallChatOptions): Promise<string>;
+	chat(
+		message: string,
+		options: PortacallChatOptions,
+	): Promise<PortacallChatResult>;
 	stream(
 		message: string,
 		options: PortacallStreamOptions,
-	): AsyncIterable<string>;
+	): AsyncIterable<PortacallStreamEvent>;
 };
 
 export function portacall(
@@ -292,7 +366,7 @@ export function portacall(
 		async chat(
 			message: string,
 			chatOptions: PortacallChatOptions,
-		): Promise<string> {
+		): Promise<PortacallChatResult> {
 			const response = await request(baseURL, options, "/chat", {
 				body: createChatBody(
 					message,
@@ -310,12 +384,12 @@ export function portacall(
 
 			const payload = (await response.json()) as ChatResponse;
 			currentConversationId = payload.conversationId;
-			return payload.content;
+			return payload;
 		},
 		async *stream(
 			message: string,
 			streamOptions: PortacallStreamOptions,
-		): AsyncIterable<string> {
+		): AsyncIterable<PortacallStreamEvent> {
 			const response = await request(baseURL, options, "/stream", {
 				body: createChatBody(
 					message,
@@ -325,6 +399,9 @@ export function portacall(
 						currentConversationId,
 					),
 				),
+				headers: {
+					accept: "text/event-stream",
+				},
 			});
 
 			if (!response.ok) {
@@ -337,14 +414,21 @@ export function portacall(
 				});
 			}
 
-			const conversationId =
-				response.headers.get("x-portacall-conversation-id")?.trim() ?? "";
-			if (conversationId) {
-				currentConversationId = conversationId;
-				streamOptions.onConversationId?.(conversationId);
+			const contentType = response.headers.get("content-type")?.trim() ?? "";
+			if (!contentType.toLowerCase().startsWith("text/event-stream")) {
+				throw new PortacallError(
+					"Portacall stream response must use text/event-stream.",
+					{ status: 500 },
+				);
 			}
 
-			yield* readTextStream(response.body);
+			for await (const rawEvent of readServerSentEvents(response.body)) {
+				const event = parseStreamEvent(rawEvent.data);
+				if (event.type === "conversation_id") {
+					currentConversationId = event.conversationId;
+				}
+				yield event;
+			}
 		},
 	};
 }
@@ -411,6 +495,7 @@ async function request(
 	requestOptions: {
 		method?: "DELETE" | "GET" | "PATCH" | "POST";
 		body?: Record<string, boolean | number | string | undefined>;
+		headers?: Record<string, string>;
 		searchParams?: Record<string, boolean | number | string | undefined>;
 	} = {},
 ): Promise<Response> {
@@ -424,12 +509,119 @@ async function request(
 			...(requestOptions.body
 				? { "content-type": "application/json; charset=utf-8" }
 				: {}),
+			...requestOptions.headers,
 			...options.headers,
 		},
 		...(requestOptions.body
 			? { body: JSON.stringify(stripUndefinedProperties(requestOptions.body)) }
 			: {}),
 	});
+}
+
+function parseStreamEvent(data: string): PortacallStreamEvent {
+	let parsed: unknown;
+
+	try {
+		parsed = JSON.parse(data) as unknown;
+	} catch {
+		throw new PortacallError(
+			"Portacall stream event payload is invalid JSON.",
+			{
+				status: 500,
+			},
+		);
+	}
+
+	if (!isRecord(parsed) || typeof parsed.type !== "string") {
+		throw new PortacallError("Portacall stream event payload is invalid.", {
+			status: 500,
+		});
+	}
+
+	switch (parsed.type) {
+		case "conversation_id":
+			if (typeof parsed.conversationId === "string" && parsed.conversationId) {
+				return parsed as PortacallStreamConversationIdEvent;
+			}
+			break;
+		case "text_delta":
+			if (typeof parsed.text === "string") {
+				return parsed as PortacallStreamTextDeltaEvent;
+			}
+			break;
+		case "tool_call_started":
+			if (isToolCallEventBase(parsed)) {
+				return parsed as PortacallStreamToolCallStartedEvent;
+			}
+			break;
+		case "tool_call_completed":
+			if (isToolCallCompletedEventData(parsed)) {
+				return parsed as PortacallStreamToolCallCompletedEvent;
+			}
+			break;
+		case "tool_call_failed":
+			if (isToolCallFailedEventData(parsed)) {
+				return parsed as PortacallStreamToolCallFailedEvent;
+			}
+			break;
+		case "message_completed":
+			if (typeof parsed.conversationId === "string" && parsed.conversationId) {
+				return parsed as PortacallStreamMessageCompletedEvent;
+			}
+			break;
+		case "error":
+			if (typeof parsed.message === "string") {
+				return parsed as PortacallStreamErrorEvent;
+			}
+			break;
+	}
+
+	throw new PortacallError("Portacall stream event payload is invalid.", {
+		status: 500,
+	});
+}
+
+function isToolCallEventBase(value: Record<string, unknown>): value is {
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+} {
+	return (
+		typeof value.toolCallId === "string" &&
+		value.toolCallId.length > 0 &&
+		typeof value.toolName === "string" &&
+		value.toolName.length > 0 &&
+		isRecord(value.args)
+	);
+}
+
+function isToolCallCompletedEventData(
+	value: Record<string, unknown>,
+): value is {
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+	status: "accepted" | "completed";
+} {
+	const candidate = value as Record<string, unknown>;
+	return (
+		isToolCallEventBase(value) &&
+		(candidate.status === "accepted" || candidate.status === "completed")
+	);
+}
+
+function isToolCallFailedEventData(value: Record<string, unknown>): value is {
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+	message: string;
+} {
+	const candidate = value as Record<string, unknown>;
+	return isToolCallEventBase(value) && typeof candidate.message === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function resolveConversationId(

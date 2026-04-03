@@ -36,7 +36,11 @@ type PortacallProxyHandler = {
 		message: string,
 		externalUserId: string,
 		conversationId?: string,
-	): Promise<{ stream: ReadableStream<Uint8Array>; conversationId: string }>;
+	): Promise<{
+		stream: ReadableStream<Uint8Array>;
+		conversationId: string;
+		responseHeaders: Record<string, string>;
+	}>;
 	listConversations(
 		agentId: string,
 		externalUserId: string,
@@ -73,7 +77,7 @@ type RouteMatch =
 
 const STREAM_HEADERS = {
 	"cache-control": "no-cache, no-transform",
-	"content-type": "text/plain; charset=utf-8",
+	"content-type": "text/event-stream; charset=utf-8",
 	"x-content-type-options": "nosniff",
 };
 
@@ -292,6 +296,7 @@ export async function handlePortacallRequest(
 			return new Response(response.stream, {
 				headers: {
 					...STREAM_HEADERS,
+					...response.responseHeaders,
 					"x-portacall-conversation-id": response.conversationId,
 				},
 			});
