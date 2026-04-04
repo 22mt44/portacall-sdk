@@ -5,6 +5,7 @@ Monorepo for the published Portacall SDK packages.
 ## Packages
 
 - `@portacall/client`: frontend SDK that sends requests to your backend route.
+- `@portacall/react`: React hooks and provider built on top of `@portacall/client`.
 - `@portacall/proxy`: backend SDK that exposes `portacall.handler()` plus an optional Express adapter.
 
 `secretKey` must never be exposed to the browser.
@@ -32,6 +33,48 @@ const history = await agent.getConversationMessages(
   conversation.id,
   session.user.id,
 );
+```
+
+## React package
+
+```tsx
+import { useState } from "react";
+import { usePortacallChat, usePortacallClient } from "@portacall/react";
+
+function SupportChat() {
+  const client = usePortacallClient({
+    backendURL: "http://localhost:4000",
+    agentId: "demo-agent",
+  });
+  const [draft, setDraft] = useState("");
+  const chat = usePortacallChat({
+    client,
+    externalUserId: "demo-user",
+    autoTitle: (message) => message.slice(0, 60),
+  });
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const nextDraft = draft.trim();
+        if (!nextDraft || chat.isBusy) {
+          return;
+        }
+        setDraft("");
+        void chat.sendMessage(nextDraft);
+      }}
+    >
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button disabled={chat.isBusy} type="submit">
+        {chat.isStreaming ? "Sending..." : "Send"}
+      </button>
+    </form>
+  );
+}
 ```
 
 ## Backend package
@@ -84,6 +127,7 @@ Dry run:
 
 ```bash
 bun run release:client:dry
+bun run release:react:dry
 bun run release:proxy:dry
 ```
 
@@ -91,10 +135,13 @@ Publish:
 
 ```bash
 bun run release:client
+bun run release:react
 bun run release:proxy
 ```
 
 - `bun run release:client:dry`: runs `npm publish --workspace @portacall/client --dry-run`.
+- `bun run release:react:dry`: runs `npm publish --workspace @portacall/react --dry-run`.
 - `bun run release:proxy:dry`: runs `npm publish --workspace @portacall/proxy --dry-run`.
 - `bun run release:client`: publishes `@portacall/client`.
+- `bun run release:react`: publishes `@portacall/react`.
 - `bun run release:proxy`: publishes `@portacall/proxy`.
