@@ -1,4 +1,6 @@
 import type {
+	PortacallActionRunListResponse,
+	PortacallActionRunResolveResponse,
 	PortacallConversationListResponse,
 	PortacallConversationMessagesResponse,
 	PortacallConversationSummary,
@@ -31,6 +33,24 @@ type PortacallProxyHandler = {
 			offset?: number;
 		},
 	): Promise<PortacallConversationMessagesResponse>;
+	getActionRuns(
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+		options?: {
+			status?: string;
+		},
+	): Promise<PortacallActionRunListResponse>;
+	approveActionRun(
+		agentId: string,
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse>;
+	denyActionRun(
+		agentId: string,
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse>;
 	openStream(
 		agentId: string,
 		message: string,
@@ -72,7 +92,16 @@ type RouteMatch =
 	| {
 			agentId: string;
 			conversationId: string;
-			action: "conversation" | "conversationArchive" | "conversationMessages";
+			action:
+				| "conversation"
+				| "conversationArchive"
+				| "conversationMessages"
+				| "conversationActionRuns";
+	  }
+	| {
+			agentId: string;
+			actionRunId: string;
+			action: "approveActionRun" | "denyActionRun";
 	  };
 
 const STREAM_HEADERS = {
@@ -170,6 +199,32 @@ export async function handlePortacallRequest(
 					{
 						limit: parsedQuery.limit,
 						offset: parsedQuery.offset,
+					},
+				),
+			);
+		} catch (error) {
+			return errorResponse(error);
+		}
+	}
+
+	if (route.action === "conversationActionRuns") {
+		if (request.method !== "GET") {
+			return methodNotAllowed("GET");
+		}
+
+		const parsedQuery = readActionRunListQuery(url.searchParams);
+		if ("error" in parsedQuery) {
+			return json({ message: parsedQuery.error }, 400);
+		}
+
+		try {
+			return json(
+				await portacall.getActionRuns(
+					route.agentId,
+					route.conversationId,
+					parsedQuery.externalUserId,
+					{
+						status: parsedQuery.status,
 					},
 				),
 			);
@@ -305,6 +360,35 @@ export async function handlePortacallRequest(
 		}
 	}
 
+	if (route.action === "approveActionRun" || route.action === "denyActionRun") {
+		if (request.method !== "POST") {
+			return methodNotAllowed("POST");
+		}
+
+		const payload = await readActionRunResolveInput(request);
+		if ("error" in payload) {
+			return json({ message: payload.error }, 400);
+		}
+
+		try {
+			return json(
+				route.action === "approveActionRun"
+					? await portacall.approveActionRun(
+							route.agentId,
+							route.actionRunId,
+							payload.externalUserId,
+						)
+					: await portacall.denyActionRun(
+							route.agentId,
+							route.actionRunId,
+							payload.externalUserId,
+						),
+			);
+		} catch (error) {
+			return errorResponse(error);
+		}
+	}
+
 	return json({ message: "Not found." }, 404);
 }
 
@@ -420,6 +504,25 @@ async function readConversationArchiveInput(request: Request): Promise<
 	};
 }
 
+async function readActionRunResolveInput(request: Request): Promise<
+	| {
+			externalUserId: string;
+	  }
+	| { error: string }
+> {
+	const payload = (await request.json().catch(() => null)) as {
+		externalUserId?: string;
+	} | null;
+	const externalUserId = payload?.externalUserId?.trim();
+	if (!externalUserId) {
+		return { error: "External user ID is required." };
+	}
+
+	return {
+		externalUserId,
+	};
+}
+
 function readConversationListQuery(searchParams: URLSearchParams):
 	| {
 			externalUserId: string;
@@ -490,6 +593,25 @@ function readConversationMessagesQuery(searchParams: URLSearchParams):
 		externalUserId,
 		...(limit !== undefined ? { limit } : {}),
 		...(offset !== undefined ? { offset } : {}),
+	};
+}
+
+function readActionRunListQuery(searchParams: URLSearchParams):
+	| {
+			externalUserId: string;
+			status?: string;
+	  }
+	| { error: string } {
+	const externalUserId = readExternalUserId(searchParams);
+	if (!externalUserId) {
+		return { error: "External user ID is required." };
+	}
+
+	const status = searchParams.get("status")?.trim();
+
+	return {
+		externalUserId,
+		...(status ? { status } : {}),
 	};
 }
 
@@ -643,6 +765,32 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 					agentId,
 					conversationId: decodeURIComponent(rest[1]),
 					action: "conversationArchive",
+				};
+			}
+
+			if (rest[2] === "action-runs") {
+				return {
+					agentId,
+					conversationId: decodeURIComponent(rest[1]),
+					action: "conversationActionRuns",
+				};
+			}
+		}
+
+		if (rest.length === 3 && rest[0] === "action-runs" && rest[1] && rest[2]) {
+			if (rest[2] === "approve") {
+				return {
+					agentId,
+					actionRunId: decodeURIComponent(rest[1]),
+					action: "approveActionRun",
+				};
+			}
+
+			if (rest[2] === "deny") {
+				return {
+					agentId,
+					actionRunId: decodeURIComponent(rest[1]),
+					action: "denyActionRun",
 				};
 			}
 		}

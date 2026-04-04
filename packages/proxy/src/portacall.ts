@@ -2,6 +2,8 @@ import { handlePortacallRequest } from "./handler";
 import { createRequestError, normalizeMessage } from "./shared";
 import type {
 	Portacall,
+	PortacallActionRunListResponse,
+	PortacallActionRunResolveResponse,
 	PortacallConversationListResponse,
 	PortacallConversationMessagesResponse,
 	PortacallConversationSummary,
@@ -146,6 +148,33 @@ export function portacall(
 		return (await response.json()) as PortacallConversationMessagesResponse;
 	};
 
+	const getActionRuns = async (
+		agentId: string,
+		conversationId: string,
+		externalUserId: string,
+		options: {
+			status?: string;
+		} = {},
+	): Promise<PortacallActionRunListResponse> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/conversations/${encodeURIComponent(normalizeConversationId(conversationId))}/action-runs`,
+			{
+				searchParams: {
+					externalUserId: normalizeRequiredExternalUserId(externalUserId),
+					status: options.status,
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		return (await response.json()) as PortacallActionRunListResponse;
+	};
+
 	const renameConversation = async (
 		agentId: string,
 		conversationId: string,
@@ -222,14 +251,45 @@ export function portacall(
 		}
 	};
 
+	const approveActionRun = async (
+		agentId: string,
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse> => {
+		return resolveActionRun(
+			proxyOptions,
+			agentId,
+			actionRunId,
+			"approve",
+			externalUserId,
+		);
+	};
+
+	const denyActionRun = async (
+		agentId: string,
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse> => {
+		return resolveActionRun(
+			proxyOptions,
+			agentId,
+			actionRunId,
+			"deny",
+			externalUserId,
+		);
+	};
+
 	return {
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
 					configured,
 					chat,
+					approveActionRun,
 					createConversation,
 					deleteConversation,
+					denyActionRun,
+					getActionRuns,
 					getConversationMessages,
 					listConversations,
 					openStream: (agentId, message, externalUserId, conversationId) =>
@@ -306,6 +366,31 @@ async function requestPortacall(
 	);
 }
 
+async function resolveActionRun(
+	options: PortacallOptions & { secretKey: string },
+	agentId: string,
+	actionRunId: string,
+	decision: "approve" | "deny",
+	externalUserId: string,
+): Promise<PortacallActionRunResolveResponse> {
+	const response = await requestPortacall(
+		options,
+		agentId,
+		`/action-runs/${encodeURIComponent(normalizeActionRunId(actionRunId))}/${decision}`,
+		{
+			body: {
+				externalUserId: normalizeRequiredExternalUserId(externalUserId),
+			},
+		},
+	);
+
+	if (!response.ok) {
+		throw await createRequestError(response, "Portacall request failed.");
+	}
+
+	return (await response.json()) as PortacallActionRunResolveResponse;
+}
+
 async function openStream(
 	options: PortacallOptions & { secretKey: string },
 	agentId: string,
@@ -374,6 +459,15 @@ function normalizeConversationId(
 	const value = conversationId?.trim();
 	if (!value) {
 		throw new Error("Conversation ID is required.");
+	}
+
+	return value;
+}
+
+function normalizeActionRunId(actionRunId: string | null | undefined): string {
+	const value = actionRunId?.trim();
+	if (!value) {
+		throw new Error("Action run ID is required.");
 	}
 
 	return value;

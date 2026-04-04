@@ -4,6 +4,9 @@ export { handlePortacallRequest } from "./handler";
 export { portacall } from "./portacall";
 export type {
 	Portacall,
+	PortacallActionRunListResponse,
+	PortacallActionRunResolveResponse,
+	PortacallActionRunSummary,
 	PortacallConversationListResponse,
 	PortacallConversationMessage,
 	PortacallConversationMessagesResponse,
