@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { PortacallActionRunSummary } from "@portacall/client";
 import { useEffect } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import {
@@ -233,7 +234,115 @@ describe("@portacall/react", () => {
 		});
 	});
 
+	test("usePortacallChat tracks pending approvals and resolves them", async () => {
+		const pendingApproval = createActionRunSummary();
+		const resolvedApproval = createActionRunSummary({
+			status: "completed",
+			decision: "approved",
+			message: "Action accepted by the webhook endpoint.",
+			resolvedAt: "2026-03-27T10:06:00.000Z",
+			updatedAt: "2026-03-27T10:06:00.000Z",
+		});
+		let latestChat: UsePortacallChatResult | null = null;
+
+		const client = createMockClient({
+			createConversation: async () =>
+				createConversationSummary({
+					id: conversationId,
+					title: null,
+				}),
+			getConversations: async () => ({
+				conversations: [
+					createConversationSummary({
+						id: conversationId,
+						title: null,
+					}),
+				],
+				pagination: createPagination(),
+			}),
+			stream: async function* () {
+				yield {
+					type: "conversation_id",
+					conversationId,
+				};
+				yield {
+					type: "approval_requested",
+					actionRun: pendingApproval,
+				};
+			},
+			approveActionRun: async () => ({
+				actionRun: resolvedApproval,
+				event: {
+					type: "approval_resolved",
+					decision: "approved",
+					actionRun: resolvedApproval,
+				},
+				conversation: createConversationSummary({
+					id: conversationId,
+					lastMessageAt: "2026-03-27T10:06:01.000Z",
+					updatedAt: "2026-03-27T10:06:01.000Z",
+				}),
+				assistantMessage: {
+					id: "message_approval",
+					role: "assistant",
+					content: "The cancel request has been submitted.",
+					createdAt: "2026-03-27T10:06:01.000Z",
+				},
+			}),
+		});
+
+		await act(async () => {
+			renderer = create(
+				<ChatHarness
+					capture={(value) => {
+						latestChat = value;
+					}}
+					client={client}
+					externalUserId="user_123"
+				/>,
+			);
+			await flush();
+		});
+
+		await act(async () => {
+			const accepted =
+				await readChat(latestChat).sendMessage("Cancel my order");
+			expect(accepted).toBe(true);
+			await flush();
+		});
+
+		expect(readChat(latestChat).messages).toHaveLength(1);
+		expect(readChat(latestChat).messages[0]).toMatchObject({
+			role: "user",
+			content: "Cancel my order",
+		} satisfies Partial<PortacallChatMessage>);
+		expect(readChat(latestChat).pendingApprovals).toEqual([pendingApproval]);
+		expect(readChat(latestChat).streamEvents).toEqual([
+			"Approval requested for cancel_order",
+		]);
+
+		await act(async () => {
+			const approved = await readChat(latestChat).approvePendingAction(
+				pendingApproval.id,
+			);
+			expect(approved).toBe(true);
+			await flush();
+		});
+
+		expect(readChat(latestChat).pendingApprovals).toEqual([]);
+		expect(readChat(latestChat).messages).toHaveLength(2);
+		expect(readChat(latestChat).messages[1]).toMatchObject({
+			role: "assistant",
+			content: "The cancel request has been submitted.",
+		} satisfies Partial<PortacallChatMessage>);
+		expect(readChat(latestChat).streamEvents).toEqual([
+			"Approval requested for cancel_order",
+			"Approved cancel_order",
+		]);
+	});
+
 	test("usePortacallChat resets transcript state when externalUserId changes", async () => {
+		const pendingApproval = createActionRunSummary();
 		const getConversationUsers: string[] = [];
 		const resetCalls: string[] = [];
 		let latestChat: UsePortacallChatResult | null = null;
@@ -263,6 +372,9 @@ describe("@portacall/react", () => {
 					pagination: createPagination(),
 				};
 			},
+			getActionRuns: async () => ({
+				actionRuns: [pendingApproval],
+			}),
 			resetConversation: () => {
 				resetCalls.push("reset");
 			},
@@ -292,6 +404,7 @@ describe("@portacall/react", () => {
 		expect(readChat(latestChat).messages[0]).toMatchObject({
 			content: "Hello user_alpha",
 		});
+		expect(readChat(latestChat).pendingApprovals).toEqual([pendingApproval]);
 
 		await act(async () => {
 			renderer?.update(
@@ -310,6 +423,7 @@ describe("@portacall/react", () => {
 		expect(getConversationUsers).toEqual(["user_alpha", "user_beta"]);
 		expect(readChat(latestChat).selectedConversationId).toBeNull();
 		expect(readChat(latestChat).messages).toEqual([]);
+		expect(readChat(latestChat).pendingApprovals).toEqual([]);
 		expect(readChat(latestChat).streamEvents).toEqual([]);
 	});
 });
@@ -414,6 +528,75 @@ function createMockClient(
 				}
 			);
 		},
+		async getActionRuns(conversationId, externalUserId, options) {
+			return (
+				(await overrides.getActionRuns?.(
+					conversationId,
+					externalUserId,
+					options,
+				)) ?? {
+					actionRuns: [],
+				}
+			);
+		},
+		async approveActionRun(actionRunId, externalUserId) {
+			return (
+				(await overrides.approveActionRun?.(actionRunId, externalUserId)) ?? {
+					actionRun: createActionRunSummary({
+						id: actionRunId,
+						externalUserId,
+						status: "completed",
+						decision: "approved",
+						resolvedAt: "2026-03-27T10:06:00.000Z",
+						updatedAt: "2026-03-27T10:06:00.000Z",
+					}),
+					event: {
+						type: "approval_resolved",
+						decision: "approved",
+						actionRun: createActionRunSummary({
+							id: actionRunId,
+							externalUserId,
+							status: "completed",
+							decision: "approved",
+							resolvedAt: "2026-03-27T10:06:00.000Z",
+							updatedAt: "2026-03-27T10:06:00.000Z",
+						}),
+					},
+					conversation: createConversationSummary({
+						id: conversationId,
+					}),
+				}
+			);
+		},
+		async denyActionRun(actionRunId, externalUserId) {
+			return (
+				(await overrides.denyActionRun?.(actionRunId, externalUserId)) ?? {
+					actionRun: createActionRunSummary({
+						id: actionRunId,
+						externalUserId,
+						status: "denied",
+						decision: "denied",
+						resolvedAt: "2026-03-27T10:06:00.000Z",
+						updatedAt: "2026-03-27T10:06:00.000Z",
+					}),
+					event: {
+						type: "approval_resolved",
+						decision: "denied",
+						actionRun: createActionRunSummary({
+							id: actionRunId,
+							externalUserId,
+							status: "denied",
+							decision: "denied",
+							resolvedAt: "2026-03-27T10:06:00.000Z",
+							updatedAt: "2026-03-27T10:06:00.000Z",
+						}),
+					},
+					conversation: createConversationSummary({
+						id: conversationId,
+					}),
+				}
+			);
+		},
 		async renameConversation(conversationId, externalUserId, title) {
 			return (
 				(await overrides.renameConversation?.(
@@ -497,6 +680,29 @@ function createConversationSummary(
 		updatedAt: overrides.updatedAt ?? "2026-03-27T10:05:00.000Z",
 		lastMessageAt: overrides.lastMessageAt ?? "2026-03-27T10:05:00.000Z",
 		archivedAt: overrides.archivedAt ?? null,
+	};
+}
+
+function createActionRunSummary(
+	overrides: Partial<PortacallActionRunSummary> = {},
+): PortacallActionRunSummary {
+	return {
+		id: overrides.id ?? "64d660c4-68ef-4f9a-9f80-45fd5551fb5c",
+		conversationId: overrides.conversationId ?? conversationId,
+		agentId: overrides.agentId ?? "agent_123",
+		externalUserId: overrides.externalUserId ?? "user_123",
+		toolCallId: overrides.toolCallId ?? "tool_123",
+		actionName: overrides.actionName ?? "cancel_order",
+		summary: overrides.summary ?? "Cancel order #12345",
+		payload: overrides.payload ?? { orderId: "12345" },
+		payloadJson: overrides.payloadJson ?? JSON.stringify({ orderId: "12345" }),
+		status: overrides.status ?? "pending",
+		decision: overrides.decision ?? "pending",
+		message: overrides.message ?? null,
+		errorCode: overrides.errorCode ?? null,
+		createdAt: overrides.createdAt ?? "2026-03-27T10:05:00.000Z",
+		updatedAt: overrides.updatedAt ?? "2026-03-27T10:05:00.000Z",
+		resolvedAt: overrides.resolvedAt ?? null,
 	};
 }
 

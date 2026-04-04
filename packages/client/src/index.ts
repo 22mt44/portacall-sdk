@@ -50,6 +50,50 @@ export type PortacallConversationMessage = {
 	createdAt: string;
 };
 
+export type PortacallActionRunStatus =
+	| "pending"
+	| "approved"
+	| "denied"
+	| "completed"
+	| "failed"
+	| "expired";
+
+export type PortacallActionRunDecision = "pending" | "approved" | "denied";
+
+export type PortacallActionRunSummary = {
+	id: string;
+	conversationId: string;
+	agentId: string;
+	externalUserId: string;
+	toolCallId: string;
+	actionName: string;
+	summary: string;
+	payload: Record<string, unknown>;
+	payloadJson: string;
+	status: PortacallActionRunStatus;
+	decision: PortacallActionRunDecision;
+	message: string | null;
+	errorCode: string | null;
+	createdAt: string;
+	updatedAt: string;
+	resolvedAt: string | null;
+};
+
+export type PortacallActionRunListOptions = {
+	status?: PortacallActionRunStatus;
+};
+
+export type PortacallActionRunListResponse = {
+	actionRuns: PortacallActionRunSummary[];
+};
+
+export type PortacallActionRunResolveResponse = {
+	actionRun: PortacallActionRunSummary;
+	event: PortacallStreamApprovalResolvedEvent;
+	conversation: PortacallConversationSummary;
+	assistantMessage?: PortacallConversationMessage;
+};
+
 export type PortacallConversationMessagesOptions = {
 	limit?: number;
 	offset?: number;
@@ -118,6 +162,17 @@ export type PortacallStreamToolCallFailedEvent = {
 	code?: string;
 };
 
+export type PortacallStreamApprovalRequestedEvent = {
+	type: "approval_requested";
+	actionRun: PortacallActionRunSummary;
+};
+
+export type PortacallStreamApprovalResolvedEvent = {
+	type: "approval_resolved";
+	decision: "approved" | "denied";
+	actionRun: PortacallActionRunSummary;
+};
+
 export type PortacallStreamMessageCompletedEvent = {
 	type: "message_completed";
 	conversationId: string;
@@ -135,6 +190,8 @@ export type PortacallStreamEvent =
 	| PortacallStreamToolCallStartedEvent
 	| PortacallStreamToolCallCompletedEvent
 	| PortacallStreamToolCallFailedEvent
+	| PortacallStreamApprovalRequestedEvent
+	| PortacallStreamApprovalResolvedEvent
 	| PortacallStreamMessageCompletedEvent
 	| PortacallStreamErrorEvent;
 
@@ -180,6 +237,19 @@ export type PortacallClient = {
 		externalUserId: string,
 		options?: PortacallConversationMessagesOptions,
 	): Promise<PortacallConversationMessagesResponse>;
+	getActionRuns(
+		conversationId: string,
+		externalUserId: string,
+		options?: PortacallActionRunListOptions,
+	): Promise<PortacallActionRunListResponse>;
+	approveActionRun(
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse>;
+	denyActionRun(
+		actionRunId: string,
+		externalUserId: string,
+	): Promise<PortacallActionRunResolveResponse>;
 	renameConversation(
 		conversationId: string,
 		externalUserId: string,
@@ -296,6 +366,58 @@ export function portacall(
 
 			const payload =
 				(await response.json()) as PortacallConversationMessagesResponse;
+			currentConversationId = payload.conversation.id;
+			return payload;
+		},
+		async getActionRuns(
+			conversationId: string,
+			externalUserId: string,
+			actionRunOptions: PortacallActionRunListOptions = {},
+		): Promise<PortacallActionRunListResponse> {
+			const normalizedConversationId = normalizeConversationId(conversationId);
+			const response = await request(
+				baseURL,
+				options,
+				`/conversations/${encodeURIComponent(normalizedConversationId)}/action-runs`,
+				{
+					searchParams: {
+						externalUserId: normalizeRequiredExternalUserId(externalUserId),
+						status: actionRunOptions.status,
+					},
+				},
+			);
+
+			if (!response.ok) {
+				throw await createRequestError(response, "Portacall request failed.");
+			}
+
+			return (await response.json()) as PortacallActionRunListResponse;
+		},
+		async approveActionRun(
+			actionRunId: string,
+			externalUserId: string,
+		): Promise<PortacallActionRunResolveResponse> {
+			const payload = await resolveActionRun(
+				baseURL,
+				options,
+				actionRunId,
+				"approve",
+				externalUserId,
+			);
+			currentConversationId = payload.conversation.id;
+			return payload;
+		},
+		async denyActionRun(
+			actionRunId: string,
+			externalUserId: string,
+		): Promise<PortacallActionRunResolveResponse> {
+			const payload = await resolveActionRun(
+				baseURL,
+				options,
+				actionRunId,
+				"deny",
+				externalUserId,
+			);
 			currentConversationId = payload.conversation.id;
 			return payload;
 		},
@@ -488,6 +610,32 @@ async function updateConversationArchiveState(
 	return payload.conversation;
 }
 
+async function resolveActionRun(
+	baseURL: string,
+	options: PortacallClientOptions,
+	actionRunId: string,
+	decision: "approve" | "deny",
+	externalUserId: string,
+): Promise<PortacallActionRunResolveResponse> {
+	const normalizedActionRunId = normalizeActionRunId(actionRunId);
+	const response = await request(
+		baseURL,
+		options,
+		`/action-runs/${encodeURIComponent(normalizedActionRunId)}/${decision}`,
+		{
+			body: {
+				externalUserId: normalizeRequiredExternalUserId(externalUserId),
+			},
+		},
+	);
+
+	if (!response.ok) {
+		throw await createRequestError(response, "Portacall request failed.");
+	}
+
+	return (await response.json()) as PortacallActionRunResolveResponse;
+}
+
 async function request(
 	baseURL: string,
 	options: PortacallClientOptions,
@@ -564,6 +712,16 @@ function parseStreamEvent(data: string): PortacallStreamEvent {
 				return parsed as PortacallStreamToolCallFailedEvent;
 			}
 			break;
+		case "approval_requested":
+			if (isApprovalRequestedEventData(parsed)) {
+				return parsed as PortacallStreamApprovalRequestedEvent;
+			}
+			break;
+		case "approval_resolved":
+			if (isApprovalResolvedEventData(parsed)) {
+				return parsed as PortacallStreamApprovalResolvedEvent;
+			}
+			break;
 		case "message_completed":
 			if (typeof parsed.conversationId === "string" && parsed.conversationId) {
 				return parsed as PortacallStreamMessageCompletedEvent;
@@ -620,6 +778,74 @@ function isToolCallFailedEventData(value: Record<string, unknown>): value is {
 	return isToolCallEventBase(value) && typeof candidate.message === "string";
 }
 
+function isApprovalRequestedEventData(
+	value: Record<string, unknown>,
+): value is {
+	actionRun: PortacallActionRunSummary;
+} {
+	return isActionRunSummary(value.actionRun);
+}
+
+function isApprovalResolvedEventData(value: Record<string, unknown>): value is {
+	decision: "approved" | "denied";
+	actionRun: PortacallActionRunSummary;
+} {
+	return (
+		(value.decision === "approved" || value.decision === "denied") &&
+		isActionRunSummary(value.actionRun)
+	);
+}
+
+function isActionRunSummary(
+	value: unknown,
+): value is PortacallActionRunSummary {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	return (
+		typeof value.id === "string" &&
+		value.id.length > 0 &&
+		typeof value.conversationId === "string" &&
+		value.conversationId.length > 0 &&
+		typeof value.agentId === "string" &&
+		value.agentId.length > 0 &&
+		typeof value.externalUserId === "string" &&
+		value.externalUserId.length > 0 &&
+		typeof value.toolCallId === "string" &&
+		value.toolCallId.length > 0 &&
+		typeof value.actionName === "string" &&
+		value.actionName.length > 0 &&
+		typeof value.summary === "string" &&
+		isRecord(value.payload) &&
+		typeof value.payloadJson === "string" &&
+		isActionRunStatus(value.status) &&
+		isActionRunDecision(value.decision) &&
+		(value.message === null || typeof value.message === "string") &&
+		(value.errorCode === null || typeof value.errorCode === "string") &&
+		typeof value.createdAt === "string" &&
+		typeof value.updatedAt === "string" &&
+		(value.resolvedAt === null || typeof value.resolvedAt === "string")
+	);
+}
+
+function isActionRunStatus(value: unknown): value is PortacallActionRunStatus {
+	return (
+		value === "pending" ||
+		value === "approved" ||
+		value === "denied" ||
+		value === "completed" ||
+		value === "failed" ||
+		value === "expired"
+	);
+}
+
+function isActionRunDecision(
+	value: unknown,
+): value is PortacallActionRunDecision {
+	return value === "pending" || value === "approved" || value === "denied";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -656,6 +882,15 @@ function normalizeConversationId(
 	const value = conversationId?.trim();
 	if (!value) {
 		throw new Error("Conversation ID is required.");
+	}
+
+	return value;
+}
+
+function normalizeActionRunId(actionRunId: string | null | undefined): string {
+	const value = actionRunId?.trim();
+	if (!value) {
+		throw new Error("Action run ID is required.");
 	}
 
 	return value;
