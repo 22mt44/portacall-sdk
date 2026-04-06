@@ -28,6 +28,7 @@ describe("handlePortacallRequest", () => {
 							decision: "approved",
 							message: null,
 							errorCode: null,
+							output: null,
 							createdAt: "2026-04-03T10:00:00.000Z",
 							updatedAt: "2026-04-03T10:01:00.000Z",
 							resolvedAt: "2026-04-03T10:01:00.000Z",
@@ -49,6 +50,7 @@ describe("handlePortacallRequest", () => {
 								decision: "approved" as const,
 								message: null,
 								errorCode: null,
+								output: null,
 								createdAt: "2026-04-03T10:00:00.000Z",
 								updatedAt: "2026-04-03T10:01:00.000Z",
 								resolvedAt: "2026-04-03T10:01:00.000Z",
@@ -89,6 +91,105 @@ describe("handlePortacallRequest", () => {
 		]);
 	});
 
+	test("forwards async action-run completion requests", async () => {
+		const calls: Array<{
+			agentId: string;
+			actionRunId: string;
+			body: {
+				status: "completed" | "failed";
+				message?: string;
+				errorCode?: string;
+				output?: unknown;
+			};
+		}> = [];
+
+		const response = await handlePortacallRequest(
+			createMockPortacall({
+				completeActionRun: async (agentId, actionRunId, body) => {
+					calls.push({ agentId, actionRunId, body });
+					return {
+						actionRun: {
+							id: actionRunId,
+							conversationId: "conversation_123",
+							agentId,
+							externalUserId: "user_123",
+							toolCallId: "tool_123",
+							actionName: "cancel order",
+							summary: "Cancel order",
+							payload: { orderId: "34567" },
+							payloadJson: '{"orderId":"34567"}',
+							status: body.status,
+							decision: "approved",
+							message: body.message ?? null,
+							errorCode: body.errorCode ?? null,
+							output: body.output ?? null,
+							createdAt: "2026-04-03T10:00:00.000Z",
+							updatedAt: "2026-04-03T10:02:00.000Z",
+							resolvedAt: "2026-04-03T10:02:00.000Z",
+						},
+						event: {
+							type: "action_completed" as const,
+							actionRun: {
+								id: actionRunId,
+								conversationId: "conversation_123",
+								agentId,
+								externalUserId: "user_123",
+								toolCallId: "tool_123",
+								actionName: "cancel order",
+								summary: "Cancel order",
+								payload: { orderId: "34567" },
+								payloadJson: '{"orderId":"34567"}',
+								status: body.status,
+								decision: "approved",
+								message: body.message ?? null,
+								errorCode: body.errorCode ?? null,
+								output: body.output ?? null,
+								createdAt: "2026-04-03T10:00:00.000Z",
+								updatedAt: "2026-04-03T10:02:00.000Z",
+								resolvedAt: "2026-04-03T10:02:00.000Z",
+							},
+						},
+						conversation: {
+							id: "conversation_123",
+							title: "Support",
+							createdAt: "2026-04-03T10:00:00.000Z",
+							updatedAt: "2026-04-03T10:02:00.000Z",
+							lastMessageAt: "2026-04-03T10:02:00.000Z",
+							archivedAt: null,
+						},
+					};
+				},
+			}),
+			new Request(
+				"https://example.com/api/portacall/agent_123/action-runs/action_run_123/complete",
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+					body: JSON.stringify({
+						status: "completed",
+						message: "Order canceled.",
+						output: { orderId: "34567", canceled: true },
+					}),
+				},
+			),
+		);
+
+		expect(response.status).toBe(200);
+		expect(calls).toEqual([
+			{
+				agentId: "agent_123",
+				actionRunId: "action_run_123",
+				body: {
+					status: "completed",
+					message: "Order canceled.",
+					output: { orderId: "34567", canceled: true },
+				},
+			},
+		]);
+	});
+
 	test("lists action runs for a conversation", async () => {
 		const response = await handlePortacallRequest(
 			createMockPortacall({
@@ -113,6 +214,7 @@ describe("handlePortacallRequest", () => {
 							decision: "pending",
 							message: null,
 							errorCode: null,
+							output: null,
 							createdAt: "2026-04-03T10:00:00.000Z",
 							updatedAt: "2026-04-03T10:00:00.000Z",
 							resolvedAt: null,
@@ -189,6 +291,7 @@ function createMockPortacall(
 				decision: "approved",
 				message: null,
 				errorCode: null,
+				output: null,
 				createdAt: "2026-04-03T10:00:00.000Z",
 				updatedAt: "2026-04-03T10:01:00.000Z",
 				resolvedAt: "2026-04-03T10:01:00.000Z",
@@ -210,6 +313,7 @@ function createMockPortacall(
 					decision: "approved",
 					message: null,
 					errorCode: null,
+					output: null,
 					createdAt: "2026-04-03T10:00:00.000Z",
 					updatedAt: "2026-04-03T10:01:00.000Z",
 					resolvedAt: "2026-04-03T10:01:00.000Z",
@@ -239,6 +343,7 @@ function createMockPortacall(
 				decision: "denied",
 				message: null,
 				errorCode: null,
+				output: null,
 				createdAt: "2026-04-03T10:00:00.000Z",
 				updatedAt: "2026-04-03T10:01:00.000Z",
 				resolvedAt: "2026-04-03T10:01:00.000Z",
@@ -260,6 +365,58 @@ function createMockPortacall(
 					decision: "denied",
 					message: null,
 					errorCode: null,
+					output: null,
+					createdAt: "2026-04-03T10:00:00.000Z",
+					updatedAt: "2026-04-03T10:01:00.000Z",
+					resolvedAt: "2026-04-03T10:01:00.000Z",
+				},
+			},
+			conversation: {
+				id: "conversation_123",
+				title: null,
+				createdAt: "2026-04-03T10:00:00.000Z",
+				updatedAt: "2026-04-03T10:01:00.000Z",
+				lastMessageAt: "2026-04-03T10:01:00.000Z",
+				archivedAt: null,
+			},
+		}),
+		completeActionRun: async (agentId, actionRunId, body) => ({
+			actionRun: {
+				id: actionRunId,
+				conversationId: "conversation_123",
+				agentId,
+				externalUserId: "user_123",
+				toolCallId: "tool_123",
+				actionName: "cancel order",
+				summary: "Cancel order",
+				payload: {},
+				payloadJson: "{}",
+				status: body.status,
+				decision: "approved",
+				message: body.message ?? null,
+				errorCode: body.errorCode ?? null,
+				output: body.output ?? null,
+				createdAt: "2026-04-03T10:00:00.000Z",
+				updatedAt: "2026-04-03T10:01:00.000Z",
+				resolvedAt: "2026-04-03T10:01:00.000Z",
+			},
+			event: {
+				type: "action_completed",
+				actionRun: {
+					id: actionRunId,
+					conversationId: "conversation_123",
+					agentId: "agent_123",
+					externalUserId: "user_123",
+					toolCallId: "tool_123",
+					actionName: "cancel order",
+					summary: "Cancel order",
+					payload: {},
+					payloadJson: "{}",
+					status: body.status,
+					decision: "approved",
+					message: body.message ?? null,
+					errorCode: body.errorCode ?? null,
+					output: body.output ?? null,
 					createdAt: "2026-04-03T10:00:00.000Z",
 					updatedAt: "2026-04-03T10:01:00.000Z",
 					resolvedAt: "2026-04-03T10:01:00.000Z",

@@ -66,6 +66,7 @@ export type PortacallActionRunSummary = {
 	decision: PortacallActionRunDecision;
 	message: string | null;
 	errorCode: string | null;
+	output: unknown | null;
 	createdAt: string;
 	updatedAt: string;
 	resolvedAt: string | null;
@@ -86,6 +87,28 @@ export type PortacallActionRunResolveResponse = {
 	assistantMessage?: PortacallConversationMessage;
 };
 
+export type PortacallActionRunCompleteBody = {
+	status: "completed" | "failed";
+	message?: string;
+	errorCode?: string;
+	output?: unknown;
+};
+
+export type PortacallActionRunCompleteResponse = {
+	actionRun: PortacallActionRunSummary;
+	event: {
+		type: "action_completed";
+		actionRun: PortacallActionRunSummary;
+	};
+	conversation: PortacallConversationSummary;
+	assistantMessage?: PortacallConversationMessage;
+};
+
 export type Portacall = {
 	handler(request: Request): Promise<Response>;
+	completeActionRun(
+		agentId: string,
+		actionRunId: string,
+		body: PortacallActionRunCompleteBody,
+	): Promise<PortacallActionRunCompleteResponse>;
 };

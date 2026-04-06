@@ -74,6 +74,7 @@ export type PortacallActionRunSummary = {
 	decision: PortacallActionRunDecision;
 	message: string | null;
 	errorCode: string | null;
+	output: unknown | null;
 	createdAt: string;
 	updatedAt: string;
 	resolvedAt: string | null;
@@ -823,6 +824,7 @@ function isActionRunSummary(
 		isActionRunDecision(value.decision) &&
 		(value.message === null || typeof value.message === "string") &&
 		(value.errorCode === null || typeof value.errorCode === "string") &&
+		(value.output === null || value.output !== undefined) &&
 		typeof value.createdAt === "string" &&
 		typeof value.updatedAt === "string" &&
 		(value.resolvedAt === null || typeof value.resolvedAt === "string")

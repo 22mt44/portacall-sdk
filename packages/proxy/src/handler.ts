@@ -1,4 +1,6 @@
 import type {
+	PortacallActionRunCompleteBody,
+	PortacallActionRunCompleteResponse,
 	PortacallActionRunListResponse,
 	PortacallActionRunResolveResponse,
 	PortacallConversationListResponse,
@@ -51,6 +53,11 @@ type PortacallProxyHandler = {
 		actionRunId: string,
 		externalUserId: string,
 	): Promise<PortacallActionRunResolveResponse>;
+	completeActionRun(
+		agentId: string,
+		actionRunId: string,
+		body: PortacallActionRunCompleteBody,
+	): Promise<PortacallActionRunCompleteResponse>;
 	openStream(
 		agentId: string,
 		message: string,
@@ -101,7 +108,7 @@ type RouteMatch =
 	| {
 			agentId: string;
 			actionRunId: string;
-			action: "approveActionRun" | "denyActionRun";
+			action: "approveActionRun" | "completeActionRun" | "denyActionRun";
 	  };
 
 const STREAM_HEADERS = {
@@ -360,17 +367,36 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (route.action === "approveActionRun" || route.action === "denyActionRun") {
+	if (
+		route.action === "approveActionRun" ||
+		route.action === "completeActionRun" ||
+		route.action === "denyActionRun"
+	) {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
 
-		const payload = await readActionRunResolveInput(request);
-		if ("error" in payload) {
-			return json({ message: payload.error }, 400);
-		}
-
 		try {
+			if (route.action === "completeActionRun") {
+				const payload = await readActionRunCompleteInput(request);
+				if ("error" in payload) {
+					return json({ message: payload.error }, 400);
+				}
+
+				return json(
+					await portacall.completeActionRun(
+						route.agentId,
+						route.actionRunId,
+						payload,
+					),
+				);
+			}
+
+			const payload = await readActionRunResolveInput(request);
+			if ("error" in payload) {
+				return json({ message: payload.error }, 400);
+			}
+
 			return json(
 				route.action === "approveActionRun"
 					? await portacall.approveActionRun(
@@ -520,6 +546,37 @@ async function readActionRunResolveInput(request: Request): Promise<
 
 	return {
 		externalUserId,
+	};
+}
+
+async function readActionRunCompleteInput(
+	request: Request,
+): Promise<PortacallActionRunCompleteBody | { error: string }> {
+	const payload = (await request.json().catch(() => null)) as {
+		status?: "completed" | "failed";
+		message?: string;
+		errorCode?: string;
+		output?: unknown;
+	} | null;
+	if (payload?.status !== "completed" && payload?.status !== "failed") {
+		return { error: "Status must be completed or failed." };
+	}
+
+	const message = payload.message?.trim();
+	if (payload.message !== undefined && !message) {
+		return { error: "Message must be a non-empty string." };
+	}
+
+	const errorCode = payload.errorCode?.trim();
+	if (payload.errorCode !== undefined && !errorCode) {
+		return { error: "Error code must be a non-empty string." };
+	}
+
+	return {
+		status: payload.status,
+		...(message ? { message } : {}),
+		...(errorCode ? { errorCode } : {}),
+		...(payload.output !== undefined ? { output: payload.output } : {}),
 	};
 }
 
@@ -791,6 +848,14 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 					agentId,
 					actionRunId: decodeURIComponent(rest[1]),
 					action: "denyActionRun",
+				};
+			}
+
+			if (rest[2] === "complete") {
+				return {
+					agentId,
+					actionRunId: decodeURIComponent(rest[1]),
+					action: "completeActionRun",
 				};
 			}
 		}

@@ -2,6 +2,8 @@ import { handlePortacallRequest } from "./handler";
 import { createRequestError, normalizeMessage } from "./shared";
 import type {
 	Portacall,
+	PortacallActionRunCompleteBody,
+	PortacallActionRunCompleteResponse,
 	PortacallActionRunListResponse,
 	PortacallActionRunResolveResponse,
 	PortacallConversationListResponse,
@@ -279,13 +281,41 @@ export function portacall(
 		);
 	};
 
+	const completeActionRun = async (
+		agentId: string,
+		actionRunId: string,
+		body: PortacallActionRunCompleteBody,
+	): Promise<PortacallActionRunCompleteResponse> => {
+		const response = await requestPortacall(
+			proxyOptions,
+			agentId,
+			`/action-runs/${encodeURIComponent(normalizeActionRunId(actionRunId))}/complete`,
+			{
+				body: {
+					status: body.status,
+					message: body.message,
+					errorCode: body.errorCode,
+					output: body.output,
+				},
+			},
+		);
+
+		if (!response.ok) {
+			throw await createRequestError(response, "Portacall request failed.");
+		}
+
+		return (await response.json()) as PortacallActionRunCompleteResponse;
+	};
+
 	return {
+		completeActionRun,
 		handler(request: Request): Promise<Response> {
 			return handlePortacallRequest(
 				{
 					configured,
 					chat,
 					approveActionRun,
+					completeActionRun,
 					createConversation,
 					deleteConversation,
 					denyActionRun,
@@ -336,7 +366,7 @@ async function requestPortacall(
 	path: string,
 	requestOptions: {
 		method?: "DELETE" | "GET" | "PATCH" | "POST";
-		body?: Record<string, boolean | number | string | undefined>;
+		body?: Record<string, unknown>;
 		headers?: Record<string, string>;
 		searchParams?: Record<string, boolean | number | string | undefined>;
 	} = {},
@@ -520,9 +550,9 @@ function normalizeOptionalOffset(
 }
 
 function stripUndefinedProperties(
-	value: Record<string, boolean | number | string | undefined>,
-): Record<string, boolean | number | string> {
+	value: Record<string, unknown>,
+): Record<string, unknown> {
 	return Object.fromEntries(
 		Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-	) as Record<string, boolean | number | string>;
+	) as Record<string, unknown>;
 }

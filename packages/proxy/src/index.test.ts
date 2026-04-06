@@ -44,6 +44,107 @@ describe("portacall proxy", () => {
 		});
 	});
 
+	test("completeActionRun forwards asynchronous completion payloads", async () => {
+		let receivedURL = "";
+		let receivedInit: RequestInit | undefined;
+		const proxy = portacall("sk_test_123", {
+			baseURL: "https://example.com",
+			fetch: async (input, init) => {
+				receivedURL = String(input);
+				receivedInit = init;
+
+				return new Response(
+					JSON.stringify({
+						actionRun: {
+							id: "action_run_123",
+							conversationId,
+							agentId: "agent_123",
+							externalUserId: "user_123",
+							toolCallId: "tool_123",
+							actionName: "cancel_order",
+							summary: "Cancel order #12345",
+							payload: { orderId: "12345" },
+							payloadJson: '{"orderId":"12345"}',
+							status: "completed",
+							decision: "approved",
+							message: "Order canceled.",
+							errorCode: null,
+							output: { orderId: "12345", canceled: true },
+							createdAt: "2026-03-27T10:05:00.000Z",
+							updatedAt: "2026-03-27T10:07:00.000Z",
+							resolvedAt: "2026-03-27T10:07:00.000Z",
+						},
+						event: {
+							type: "action_completed",
+							actionRun: {
+								id: "action_run_123",
+								conversationId,
+								agentId: "agent_123",
+								externalUserId: "user_123",
+								toolCallId: "tool_123",
+								actionName: "cancel_order",
+								summary: "Cancel order #12345",
+								payload: { orderId: "12345" },
+								payloadJson: '{"orderId":"12345"}',
+								status: "completed",
+								decision: "approved",
+								message: "Order canceled.",
+								errorCode: null,
+								output: { orderId: "12345", canceled: true },
+								createdAt: "2026-03-27T10:05:00.000Z",
+								updatedAt: "2026-03-27T10:07:00.000Z",
+								resolvedAt: "2026-03-27T10:07:00.000Z",
+							},
+						},
+						conversation: {
+							id: conversationId,
+							title: "Support thread",
+							createdAt: "2026-03-27T10:00:00.000Z",
+							updatedAt: "2026-03-27T10:07:01.000Z",
+							lastMessageAt: "2026-03-27T10:07:01.000Z",
+							archivedAt: null,
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json; charset=utf-8" },
+					},
+				);
+			},
+		});
+
+		await expect(
+			proxy.completeActionRun("agent_123", "action_run_123", {
+				status: "completed",
+				message: "Order canceled.",
+				output: { orderId: "12345", canceled: true },
+			}),
+		).resolves.toMatchObject({
+			actionRun: {
+				id: "action_run_123",
+				status: "completed",
+			},
+			event: {
+				type: "action_completed",
+			},
+		});
+		expect(receivedURL).toBe(
+			"https://example.com/api/portacall/agent_123/action-runs/action_run_123/complete",
+		);
+		expect(receivedInit?.method).toBe("POST");
+		expect(receivedInit?.headers).toEqual({
+			"content-type": "application/json; charset=utf-8",
+			authorization: "Bearer sk_test_123",
+		});
+		expect(receivedInit?.body).toBe(
+			JSON.stringify({
+				status: "completed",
+				message: "Order canceled.",
+				output: { orderId: "12345", canceled: true },
+			}),
+		);
+	});
+
 	test("handler proxies chat requests to the Portacall API", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
