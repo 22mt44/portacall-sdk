@@ -13,10 +13,8 @@
 		"check": "bun run test && bun run typecheck && bun run lint",
 		"release:client:dry": "npm publish --workspace @portacall/client --dry-run",
 		"release:client": "npm publish --workspace @portacall/client",
-		"release:react:dry": "npm publish --workspace @portacall/react --dry-run",
-		"release:react": "npm publish --workspace @portacall/react",
-		"release:proxy:dry": "npm publish --workspace @portacall/proxy --dry-run",
-		"release:proxy": "npm publish --workspace @portacall/proxy"
+		"release:server:dry": "npm publish --workspace @portacall/server --dry-run",
+		"release:server": "npm publish --workspace @portacall/server"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.8",

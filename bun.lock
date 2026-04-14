@@ -15,16 +15,7 @@
     "packages/client": {
       "name": "@portacall/client",
       "version": "0.1.0",
-    },
-    "packages/proxy": {
-      "name": "@portacall/proxy",
-      "version": "0.1.0",
-    },
-    "packages/react": {
-      "name": "@portacall/react",
-      "version": "0.1.0",
       "devDependencies": {
-        "@portacall/client": "workspace:*",
         "@types/react": "^19.2.2",
         "@types/react-dom": "^19.2.2",
         "@types/react-test-renderer": "^19.1.0",
@@ -33,9 +24,15 @@
         "react-test-renderer": "^19.2.0",
       },
       "peerDependencies": {
-        "@portacall/client": "^0.1.0",
         "react": ">=18",
       },
+      "optionalPeers": [
+        "react",
+      ],
+    },
+    "packages/server": {
+      "name": "@portacall/server",
+      "version": "0.1.0",
     },
   },
   "packages": {
@@ -87,9 +84,7 @@
 
     "@portacall/client": ["@portacall/client@workspace:packages/client"],
 
-    "@portacall/proxy": ["@portacall/proxy@workspace:packages/proxy"],
-
-    "@portacall/react": ["@portacall/react@workspace:packages/react"],
+    "@portacall/server": ["@portacall/server@workspace:packages/server"],
 
     "@quansync/fs": ["@quansync/fs@1.0.0", "", { "dependencies": { "quansync": "^1.0.0" } }, "sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ=="],
 

@@ -1,3 +1,12 @@
+import {
+	isNonEmptyString,
+	isRecord,
+	json,
+	methodNotAllowed,
+	timingSafeEqual,
+	toHex,
+} from "./shared";
+
 export type PortacallToolWebhookEvent = {
 	version: string;
 	type: "tool.requested";
@@ -7,12 +16,22 @@ export type PortacallToolWebhookEvent = {
 		name: string;
 		description: string;
 	};
-	args: Record<string, unknown>;
-	actor: Record<string, unknown>;
+	args: {
+		summary?: string;
+		payload?: Record<string, unknown>;
+		payloadJson?: string;
+		[key: string]: unknown;
+	};
+	actor: {
+		accountUserId: string;
+		accountEmail: string;
+	};
 	meta: {
 		timestamp: string;
 		requestId: string;
 		conversationId?: string;
+		externalUserId?: string;
+		authHandoff?: string;
 		requiresConfirmation: boolean;
 		completionMode?: "accept_immediately" | "wait_for_result";
 	};
@@ -128,8 +147,7 @@ export async function handlePortacallWebhook(
 	}
 
 	try {
-		const response = normalizeWebhookResponse(await options.onTool(payload));
-		return json(response);
+		return json(normalizeWebhookResponse(await options.onTool(payload)));
 	} catch (error) {
 		return json(
 			{
@@ -164,7 +182,6 @@ export async function createPortacallWebhookSignature(input: {
 		key,
 		encoder.encode(`${input.timestamp}.${input.body}`),
 	);
-
 	return toHex(new Uint8Array(signature));
 }
 
@@ -177,8 +194,6 @@ export async function verifyPortacallWebhookSignature(input: {
 	const expectedSignature = await createPortacallWebhookSignature(input);
 	return timingSafeEqual(expectedSignature, input.signature);
 }
-
-const encoder = new TextEncoder();
 
 function normalizeWebhookResponse(
 	response: PortacallToolWebhookResponse,
@@ -204,11 +219,8 @@ function normalizeWebhookResponse(
 function isPortacallToolWebhookEvent(
 	value: unknown,
 ): value is PortacallToolWebhookEvent {
-	if (!isRecord(value)) {
-		return false;
-	}
-
 	if (
+		!isRecord(value) ||
 		!isNonEmptyString(value.version) ||
 		value.type !== "tool.requested" ||
 		!isNonEmptyString(value.toolRunId) ||
@@ -218,6 +230,8 @@ function isPortacallToolWebhookEvent(
 		!isNonEmptyString(value.tool.description) ||
 		!isRecord(value.args) ||
 		!isRecord(value.actor) ||
+		!isNonEmptyString(value.actor.accountUserId) ||
+		!isNonEmptyString(value.actor.accountEmail) ||
 		!isRecord(value.meta) ||
 		!isNonEmptyString(value.meta.timestamp) ||
 		!isNonEmptyString(value.meta.requestId) ||
@@ -229,6 +243,20 @@ function isPortacallToolWebhookEvent(
 	if (
 		value.meta.conversationId !== undefined &&
 		typeof value.meta.conversationId !== "string"
+	) {
+		return false;
+	}
+
+	if (
+		value.meta.externalUserId !== undefined &&
+		typeof value.meta.externalUserId !== "string"
+	) {
+		return false;
+	}
+
+	if (
+		value.meta.authHandoff !== undefined &&
+		typeof value.meta.authHandoff !== "string"
 	) {
 		return false;
 	}
@@ -263,48 +291,4 @@ function normalizeSignature(signatureHeader: string): string {
 	return signatureHeader;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-	return typeof value === "string" && value.trim().length > 0;
-}
-
-function methodNotAllowed(method: string): Response {
-	return new Response(JSON.stringify({ message: "Method not allowed." }), {
-		status: 405,
-		headers: {
-			allow: method,
-			"content-type": "application/json; charset=utf-8",
-		},
-	});
-}
-
-function json(payload: unknown, status = 200): Response {
-	return new Response(JSON.stringify(payload), {
-		status,
-		headers: {
-			"content-type": "application/json; charset=utf-8",
-		},
-	});
-}
-
-function toHex(value: Uint8Array): string {
-	return Array.from(value)
-		.map((byte) => byte.toString(16).padStart(2, "0"))
-		.join("");
-}
-
-function timingSafeEqual(left: string, right: string): boolean {
-	if (left.length !== right.length) {
-		return false;
-	}
-
-	let mismatch = 0;
-	for (let index = 0; index < left.length; index += 1) {
-		mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
-	}
-
-	return mismatch === 0;
-}
+const encoder = new TextEncoder();

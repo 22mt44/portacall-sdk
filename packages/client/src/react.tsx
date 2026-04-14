@@ -1,16 +1,6 @@
 "use client";
 
 import {
-	type PortacallClient,
-	type PortacallClientFetch,
-	type PortacallClientHealth,
-	type PortacallConversationPagination,
-	type PortacallConversationSummary,
-	type PortacallStreamEvent,
-	type PortacallToolRunSummary,
-	portacall,
-} from "@portacall/client";
-import {
 	createContext,
 	type PropsWithChildren,
 	type RefObject,
@@ -21,6 +11,16 @@ import {
 	useRef,
 	useState,
 } from "react";
+import {
+	type PortacallClient,
+	type PortacallClientFetch,
+	type PortacallClientHealth,
+	type PortacallConversationPagination,
+	type PortacallConversationSummary,
+	type PortacallStreamEvent,
+	type PortacallToolRunSummary,
+	portacall,
+} from "./index";
 
 const DEFAULT_CONVERSATION_PAGE_SIZE = 50;
 const DEFAULT_MESSAGE_PAGE_SIZE = 100;

@@ -4,9 +4,8 @@ Monorepo for the published Portacall SDK packages.
 
 ## Packages
 
-- `@portacall/client`: frontend SDK that sends requests to your backend route.
-- `@portacall/react`: React hooks and provider built on top of `@portacall/client`.
-- `@portacall/proxy`: backend SDK that exposes `portacall.handler()` plus an optional Express adapter.
+- `@portacall/client`: frontend SDK plus the `@portacall/client/react` subpath.
+- `@portacall/server`: server SDK plus framework and auth subpaths.
 
 `secretKey` must never be exposed to the browser.
 
@@ -35,11 +34,11 @@ const history = await agent.getConversationMessages(
 );
 ```
 
-## React package
+## React subpath
 
 ```tsx
 import { useState } from "react";
-import { usePortacallChat, usePortacallClient } from "@portacall/react";
+import { usePortacallChat, usePortacallClient } from "@portacall/client/react";
 
 function SupportChat() {
   const client = usePortacallClient({
@@ -77,24 +76,37 @@ function SupportChat() {
 }
 ```
 
-## Backend package
+## Server package
 
 ```ts
-import { portacall } from "@portacall/proxy";
+import { createPortacallServer } from "@portacall/server";
 
-export const proxy = portacall(
-  process.env.PORTACALL_SECRET_KEY ?? "",
-);
+const server = createPortacallServer({
+  secretKey: process.env.PORTACALL_SECRET_KEY ?? "",
+  webhookSecret: process.env.PORTACALL_WEBHOOK_SECRET ?? "",
+});
+
+export const agent = server.agent("demo-agent");
 ```
 
 ```ts
 import { Hono } from "hono";
-import { proxy } from "./lib/portacall";
+import { createPortacallHono } from "@portacall/server/hono";
+import { agent } from "./lib/portacall";
 
 const app = new Hono();
+const portacall = createPortacallHono(agent);
 
-app.all("/api/portacall/*", (c) => proxy.handler(c.req.raw));
+app.post("/api/portacall/webhooks", (c) => portacall.webhook(c));
+app.all("/api/portacall/*", (c) => portacall.handler(c));
 ```
+
+Available `@portacall/server` subpaths:
+
+- `@portacall/server/hono`
+- `@portacall/server/express`
+- `@portacall/server/auth/better-auth`
+- `@portacall/server/auth/authjs`
 
 Portacall conversations are user-scoped:
 
@@ -115,10 +127,10 @@ bun run lint
 bun run build
 ```
 
-- `bun run test`: runs package tests in `packages/client` and `packages/proxy` through Turbo.
-- `bun run typecheck`: runs TypeScript checks in both packages through Turbo.
-- `bun run lint`: runs Biome checks in both packages through Turbo, then checks root docs and config files.
-- `bun run build`: builds both published packages into their own `dist` folders.
+- `bun run test`: runs package tests across the published SDK packages through Turbo.
+- `bun run typecheck`: runs TypeScript checks across the published SDK packages through Turbo.
+- `bun run lint`: runs Biome checks across the published SDK packages through Turbo, then checks root docs and config files.
+- `bun run build`: builds the published SDK packages into their own `dist` folders.
 - `bun run check`: runs `test`, `typecheck`, and `lint` in sequence.
 
 ## Publishing
@@ -127,21 +139,17 @@ Dry run:
 
 ```bash
 bun run release:client:dry
-bun run release:react:dry
-bun run release:proxy:dry
+bun run release:server:dry
 ```
 
 Publish:
 
 ```bash
 bun run release:client
-bun run release:react
-bun run release:proxy
+bun run release:server
 ```
 
 - `bun run release:client:dry`: runs `npm publish --workspace @portacall/client --dry-run`.
-- `bun run release:react:dry`: runs `npm publish --workspace @portacall/react --dry-run`.
-- `bun run release:proxy:dry`: runs `npm publish --workspace @portacall/proxy --dry-run`.
+- `bun run release:server:dry`: runs `npm publish --workspace @portacall/server --dry-run`.
 - `bun run release:client`: publishes `@portacall/client`.
-- `bun run release:react`: publishes `@portacall/react`.
-- `bun run release:proxy`: publishes `@portacall/proxy`.
+- `bun run release:server`: publishes `@portacall/server`.

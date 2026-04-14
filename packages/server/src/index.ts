@@ -1,9 +1,19 @@
+export {
+	createPortacallAuthHandoff,
+	type ReadPortacallAuthHandoffResult,
+	readPortacallAuthHandoff,
+} from "./auth-handoff";
 export type { PortacallErrorPayload } from "./errors";
 export { PortacallError } from "./errors";
 export { handlePortacallRequest } from "./handler";
-export { portacall } from "./portacall";
+export { createPortacallServer } from "./server";
 export type {
-	Portacall,
+	PortacallAgent,
+	PortacallAuthAdapter,
+	PortacallAuthCaptureContext,
+	PortacallAuthMissingContext,
+	PortacallAuthRestoreContext,
+	PortacallAuthSerializeContext,
 	PortacallConversationListResponse,
 	PortacallConversationMessage,
 	PortacallConversationMessagesResponse,
@@ -11,11 +21,19 @@ export type {
 	PortacallConversationSummary,
 	PortacallFetch,
 	PortacallOptions,
+	PortacallRegisteredTool,
+	PortacallServer,
+	PortacallServerOptions,
+	PortacallToolDefinition,
+	PortacallToolExecutionContext,
+	PortacallToolHandler,
 	PortacallToolRunCompleteBody,
 	PortacallToolRunCompleteResponse,
 	PortacallToolRunListResponse,
 	PortacallToolRunResolveResponse,
 	PortacallToolRunSummary,
+	PortacallToolSyncRequest,
+	PortacallToolSyncResponse,
 } from "./types";
 export type {
 	HandlePortacallWebhookOptions,

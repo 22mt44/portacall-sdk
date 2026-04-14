@@ -82,3 +82,80 @@ You can create more than one agent instance in the same app:
 export const supportAgent = portacall("http://localhost:4000", "support");
 export const salesAgent = portacall("http://localhost:4000", "sales");
 ```
+
+## React subpath
+
+React hooks and provider are published from `@portacall/client/react`.
+
+```tsx
+import { useState } from "react";
+import { usePortacall } from "@portacall/client/react";
+
+function SupportChat() {
+  const [draft, setDraft] = useState("");
+  const portacall = usePortacall({
+    backendURL: "http://localhost:4000",
+    agentId: "demo-agent",
+    externalUserId: "demo-user",
+    autoTitle: (message) => message.slice(0, 60),
+  });
+
+  async function handleSend() {
+    const nextDraft = draft.trim();
+    if (!nextDraft || portacall.isBusy) {
+      return;
+    }
+
+    setDraft("");
+    await portacall.sendMessage(nextDraft);
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSend();
+      }}
+    >
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button disabled={portacall.isBusy} type="submit">
+        {portacall.isStreaming ? "Sending..." : "Send"}
+      </button>
+    </form>
+  );
+}
+```
+
+Provider-based usage stays available:
+
+```tsx
+import {
+  PortacallProvider,
+  usePortacallChat,
+  usePortacallClient,
+} from "@portacall/client/react";
+
+function ChatShell() {
+  const chat = usePortacallChat({
+    externalUserId: "demo-user",
+  });
+
+  return <pre>{JSON.stringify(chat.messages, null, 2)}</pre>;
+}
+
+function App() {
+  const client = usePortacallClient({
+    backendURL: "http://localhost:4000",
+    agentId: "demo-agent",
+  });
+
+  return (
+    <PortacallProvider client={client}>
+      <ChatShell />
+    </PortacallProvider>
+  );
+}
+```

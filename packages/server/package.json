@@ -1,7 +1,7 @@
 {
-	"name": "@portacall/react",
+	"name": "@portacall/server",
 	"version": "0.1.0",
-	"description": "React adapter for the Portacall client SDK.",
+	"description": "Server SDK for Portacall routes, tool sync, and webhook execution.",
 	"license": "MIT",
 	"type": "module",
 	"packageManager": "bun@1.3.4",
@@ -13,17 +13,37 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs"
+		},
+		"./hono": {
+			"types": "./dist/hono.d.ts",
+			"import": "./dist/hono.mjs",
+			"require": "./dist/hono.cjs"
+		},
+		"./express": {
+			"types": "./dist/express.d.ts",
+			"import": "./dist/express.mjs",
+			"require": "./dist/express.cjs"
+		},
+		"./auth/better-auth": {
+			"types": "./dist/auth/better-auth.d.ts",
+			"import": "./dist/auth/better-auth.mjs",
+			"require": "./dist/auth/better-auth.cjs"
+		},
+		"./auth/authjs": {
+			"types": "./dist/auth/authjs.d.ts",
+			"import": "./dist/auth/authjs.mjs",
+			"require": "./dist/auth/authjs.cjs"
 		}
 	},
 	"sideEffects": false,
-	"homepage": "https://github.com/22mt44/portacall-sdk/tree/main/packages/react#readme",
+	"homepage": "https://github.com/22mt44/portacall-sdk/tree/main/packages/server#readme",
 	"bugs": {
 		"url": "https://github.com/22mt44/portacall-sdk/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/22mt44/portacall-sdk.git",
-		"directory": "packages/react"
+		"directory": "packages/server"
 	},
 	"keywords": [
 		"ai",
@@ -31,8 +51,8 @@
 		"sdk",
 		"llm",
 		"portacall",
-		"client",
-		"react"
+		"server",
+		"backend"
 	],
 	"files": [
 		"dist"
@@ -47,19 +67,6 @@
 		"check": "bun run test && bun run typecheck && bun run lint",
 		"prepack": "bun run build",
 		"prepublishOnly": "bun run check && bun run build"
-	},
-	"peerDependencies": {
-		"@portacall/client": "^0.1.0",
-		"react": ">=18"
-	},
-	"devDependencies": {
-		"@portacall/client": "workspace:*",
-		"@types/react": "^19.2.2",
-		"@types/react-dom": "^19.2.2",
-		"@types/react-test-renderer": "^19.1.0",
-		"react": "^19.2.0",
-		"react-dom": "^19.2.0",
-		"react-test-renderer": "^19.2.0"
 	},
 	"publishConfig": {
 		"access": "public"

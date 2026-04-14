@@ -797,9 +797,7 @@ function isApprovalResolvedEventData(value: Record<string, unknown>): value is {
 	);
 }
 
-function isToolRunSummary(
-	value: unknown,
-): value is PortacallToolRunSummary {
+function isToolRunSummary(value: unknown): value is PortacallToolRunSummary {
 	if (!isRecord(value)) {
 		return false;
 	}
@@ -842,9 +840,7 @@ function isToolRunStatus(value: unknown): value is PortacallToolRunStatus {
 	);
 }
 
-function isToolRunDecision(
-	value: unknown,
-): value is PortacallToolRunDecision {
+function isToolRunDecision(value: unknown): value is PortacallToolRunDecision {
 	return value === "pending" || value === "approved" || value === "denied";
 }
 

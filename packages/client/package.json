@@ -13,6 +13,11 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs"
+		},
+		"./react": {
+			"types": "./dist/react.d.ts",
+			"import": "./dist/react.mjs",
+			"require": "./dist/react.cjs"
 		}
 	},
 	"sideEffects": false,
@@ -47,6 +52,22 @@
 		"check": "bun run test && bun run typecheck && bun run lint",
 		"prepack": "bun run build",
 		"prepublishOnly": "bun run check && bun run build"
+	},
+	"peerDependencies": {
+		"react": ">=18"
+	},
+	"peerDependenciesMeta": {
+		"react": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.2",
+		"@types/react-dom": "^19.2.2",
+		"@types/react-test-renderer": "^19.1.0",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"react-test-renderer": "^19.2.0"
 	},
 	"publishConfig": {
 		"access": "public"

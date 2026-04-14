@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { PortacallToolRunSummary } from "@portacall/client";
 import { useEffect } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import type { PortacallToolRunSummary } from "./index";
 import {
 	type PortacallChatMessage,
 	type PortacallClient,
@@ -13,7 +13,7 @@ import {
 	usePortacall,
 	usePortacallChat,
 	usePortacallClient,
-} from "./index";
+} from "./react";
 
 const conversationId = "18e40f1f-490d-4ee9-9d31-c6da546dac66";
 
@@ -23,7 +23,7 @@ const conversationId = "18e40f1f-490d-4ee9-9d31-c6da546dac66";
 	}
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("@portacall/react", () => {
+describe("@portacall/client/react", () => {
 	let renderer: ReactTestRenderer | null = null;
 
 	afterEach(async () => {
@@ -700,6 +700,7 @@ function createToolRunSummary(
 		decision: overrides.decision ?? "pending",
 		message: overrides.message ?? null,
 		errorCode: overrides.errorCode ?? null,
+		output: overrides.output ?? null,
 		createdAt: overrides.createdAt ?? "2026-03-27T10:05:00.000Z",
 		updatedAt: overrides.updatedAt ?? "2026-03-27T10:05:00.000Z",
 		resolvedAt: overrides.resolvedAt ?? null,

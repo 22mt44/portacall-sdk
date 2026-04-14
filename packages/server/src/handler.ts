@@ -1,3 +1,4 @@
+import { json, methodNotAllowed } from "./shared";
 import type {
 	PortacallConversationListResponse,
 	PortacallConversationMessagesResponse,
@@ -6,28 +7,32 @@ import type {
 	PortacallToolRunCompleteResponse,
 	PortacallToolRunListResponse,
 	PortacallToolRunResolveResponse,
+	PortacallToolSyncRequest,
+	PortacallToolSyncResponse,
 } from "./types";
 
-type PortacallProxyHandler = {
+type PortacallServerRequestHandler = {
 	configured: boolean;
+	expectedAgentId: string;
+	captureAuthHandoff?: (input: {
+		request: Request;
+		externalUserId: string;
+	}) => Promise<string | undefined>;
 	chat(
-		agentId: string,
 		message: string,
 		externalUserId: string,
 		conversationId?: string,
+		authHandoff?: string,
 	): Promise<{ content: string; conversationId: string }>;
 	createConversation(
-		agentId: string,
 		externalUserId: string,
 		title?: string,
 	): Promise<PortacallConversationSummary>;
 	deleteConversation(
-		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 	): Promise<void>;
 	getConversationMessages(
-		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 		options?: {
@@ -36,7 +41,6 @@ type PortacallProxyHandler = {
 		},
 	): Promise<PortacallConversationMessagesResponse>;
 	getToolRuns(
-		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 		options?: {
@@ -44,57 +48,50 @@ type PortacallProxyHandler = {
 		},
 	): Promise<PortacallToolRunListResponse>;
 	approveToolRun(
-		agentId: string,
 		toolRunId: string,
 		externalUserId: string,
 	): Promise<PortacallToolRunResolveResponse>;
 	denyToolRun(
-		agentId: string,
 		toolRunId: string,
 		externalUserId: string,
 	): Promise<PortacallToolRunResolveResponse>;
 	completeToolRun(
-		agentId: string,
 		toolRunId: string,
 		body: PortacallToolRunCompleteBody,
 	): Promise<PortacallToolRunCompleteResponse>;
 	openStream(
-		agentId: string,
 		message: string,
 		externalUserId: string,
 		conversationId?: string,
+		authHandoff?: string,
 	): Promise<{
 		stream: ReadableStream<Uint8Array>;
 		conversationId: string;
 		responseHeaders: Record<string, string>;
 	}>;
-	listConversations(
-		agentId: string,
-		externalUserId: string,
-		options?: {
-			limit?: number;
-			offset?: number;
-			includeArchived?: boolean;
-		},
-	): Promise<PortacallConversationListResponse>;
+	listConversations(options: {
+		externalUserId: string;
+		limit?: number;
+		offset?: number;
+		includeArchived?: boolean;
+	}): Promise<PortacallConversationListResponse>;
 	renameConversation(
-		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 		title: string,
 	): Promise<PortacallConversationSummary>;
 	setConversationArchived(
-		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 		archived: boolean,
 	): Promise<PortacallConversationSummary>;
+	syncTools(body: PortacallToolSyncRequest): Promise<PortacallToolSyncResponse>;
 };
 
 type RouteMatch =
 	| {
 			agentId: string;
-			routeType: "health" | "chat" | "stream" | "conversations";
+			routeType: "health" | "chat" | "stream" | "conversations" | "syncTools";
 	  }
 	| {
 			agentId: string;
@@ -118,13 +115,13 @@ const STREAM_HEADERS = {
 };
 
 export async function handlePortacallRequest(
-	portacall: PortacallProxyHandler,
+	portacall: PortacallServerRequestHandler,
 	request: Request,
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const route = matchPortacallRoute(trimTrailingSlash(url.pathname));
 
-	if (!route) {
+	if (!route || route.agentId !== portacall.expectedAgentId) {
 		return json({ message: "Not found." }, 404);
 	}
 
@@ -138,6 +135,23 @@ export async function handlePortacallRequest(
 		return missingConfiguration();
 	}
 
+	if (route.routeType === "syncTools") {
+		if (request.method !== "POST") {
+			return methodNotAllowed("POST");
+		}
+
+		const payload = await readToolSyncInput(request);
+		if ("error" in payload) {
+			return json({ message: payload.error }, 400);
+		}
+
+		try {
+			return json(await portacall.syncTools(payload));
+		} catch (error) {
+			return errorResponse(error);
+		}
+	}
+
 	if (route.routeType === "conversations") {
 		if (request.method === "GET") {
 			const parsedQuery = readConversationListQuery(url.searchParams);
@@ -146,17 +160,7 @@ export async function handlePortacallRequest(
 			}
 
 			try {
-				return json(
-					await portacall.listConversations(
-						route.agentId,
-						parsedQuery.externalUserId,
-						{
-							limit: parsedQuery.limit,
-							offset: parsedQuery.offset,
-							includeArchived: parsedQuery.includeArchived,
-						},
-					),
-				);
+				return json(await portacall.listConversations(parsedQuery));
 			} catch (error) {
 				return errorResponse(error);
 			}
@@ -172,7 +176,6 @@ export async function handlePortacallRequest(
 				return json(
 					{
 						conversation: await portacall.createConversation(
-							route.agentId,
 							payload.externalUserId,
 							payload.title,
 						),
@@ -200,7 +203,6 @@ export async function handlePortacallRequest(
 		try {
 			return json(
 				await portacall.getConversationMessages(
-					route.agentId,
 					route.conversationId,
 					parsedQuery.externalUserId,
 					{
@@ -227,7 +229,6 @@ export async function handlePortacallRequest(
 		try {
 			return json(
 				await portacall.getToolRuns(
-					route.agentId,
 					route.conversationId,
 					parsedQuery.externalUserId,
 					{
@@ -250,7 +251,6 @@ export async function handlePortacallRequest(
 			try {
 				return json({
 					conversation: await portacall.renameConversation(
-						route.agentId,
 						route.conversationId,
 						payload.externalUserId,
 						payload.title,
@@ -269,7 +269,6 @@ export async function handlePortacallRequest(
 
 			try {
 				await portacall.deleteConversation(
-					route.agentId,
 					route.conversationId,
 					externalUserId,
 				);
@@ -298,7 +297,6 @@ export async function handlePortacallRequest(
 		try {
 			return json({
 				conversation: await portacall.setConversationArchived(
-					route.agentId,
 					route.conversationId,
 					payload.externalUserId,
 					payload.archived,
@@ -323,13 +321,18 @@ export async function handlePortacallRequest(
 		}
 
 		try {
-			const response = await portacall.chat(
-				route.agentId,
-				payload.message,
-				payload.externalUserId,
-				payload.conversationId,
+			const authHandoff = await portacall.captureAuthHandoff?.({
+				request,
+				externalUserId: payload.externalUserId,
+			});
+			return json(
+				await portacall.chat(
+					payload.message,
+					payload.externalUserId,
+					payload.conversationId,
+					authHandoff,
+				),
 			);
-			return json(response);
 		} catch (error) {
 			return errorResponse(error);
 		}
@@ -349,11 +352,15 @@ export async function handlePortacallRequest(
 		}
 
 		try {
+			const authHandoff = await portacall.captureAuthHandoff?.({
+				request,
+				externalUserId: payload.externalUserId,
+			});
 			const response = await portacall.openStream(
-				route.agentId,
 				payload.message,
 				payload.externalUserId,
 				payload.conversationId,
+				authHandoff,
 			);
 			return new Response(response.stream, {
 				headers: {
@@ -383,13 +390,7 @@ export async function handlePortacallRequest(
 					return json({ message: payload.error }, 400);
 				}
 
-				return json(
-					await portacall.completeToolRun(
-						route.agentId,
-						route.toolRunId,
-						payload,
-					),
-				);
+				return json(await portacall.completeToolRun(route.toolRunId, payload));
 			}
 
 			const payload = await readToolRunResolveInput(request);
@@ -400,12 +401,10 @@ export async function handlePortacallRequest(
 			return json(
 				route.routeType === "approveToolRun"
 					? await portacall.approveToolRun(
-							route.agentId,
 							route.toolRunId,
 							payload.externalUserId,
 						)
 					: await portacall.denyToolRun(
-							route.agentId,
 							route.toolRunId,
 							payload.externalUserId,
 						),
@@ -580,6 +579,63 @@ async function readToolRunCompleteInput(
 	};
 }
 
+async function readToolSyncInput(
+	request: Request,
+): Promise<PortacallToolSyncRequest | { error: string }> {
+	const payload = (await request.json().catch(() => null)) as {
+		tools?: Array<{
+			id?: string;
+			name?: string;
+			description?: string;
+			requiresConfirmation?: boolean;
+			completionMode?: "accept_immediately" | "wait_for_result";
+		}>;
+	} | null;
+
+	if (!Array.isArray(payload?.tools)) {
+		return { error: "Tools must be an array." };
+	}
+
+	for (const tool of payload.tools) {
+		if (
+			typeof tool?.id !== "string" ||
+			tool.id.trim().length === 0 ||
+			typeof tool.name !== "string" ||
+			tool.name.trim().length === 0 ||
+			typeof tool.description !== "string" ||
+			tool.description.trim().length === 0 ||
+			typeof tool.requiresConfirmation !== "boolean" ||
+			(tool.completionMode !== "accept_immediately" &&
+				tool.completionMode !== "wait_for_result")
+		) {
+			return {
+				error:
+					"Each tool must include id, name, description, requiresConfirmation, and completionMode.",
+			};
+		}
+	}
+
+	return {
+		tools: payload.tools.map((tool) => {
+			const normalizedTool = tool as {
+				id: string;
+				name: string;
+				description: string;
+				requiresConfirmation: boolean;
+				completionMode: "accept_immediately" | "wait_for_result";
+			};
+
+			return {
+				id: normalizedTool.id.trim(),
+				name: normalizedTool.name.trim(),
+				description: normalizedTool.description.trim(),
+				requiresConfirmation: normalizedTool.requiresConfirmation,
+				completionMode: normalizedTool.completionMode,
+			};
+		}),
+	};
+}
+
 function readConversationListQuery(searchParams: URLSearchParams):
 	| {
 			externalUserId: string;
@@ -736,16 +792,6 @@ function missingConfiguration(): Response {
 	);
 }
 
-function methodNotAllowed(method: string): Response {
-	return new Response(JSON.stringify({ message: "Method not allowed." }), {
-		status: 405,
-		headers: {
-			allow: method,
-			"content-type": "application/json; charset=utf-8",
-		},
-	});
-}
-
 function errorResponse(error: unknown): Response {
 	const status =
 		error instanceof Error &&
@@ -793,6 +839,14 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 			) {
 				return { agentId, routeType };
 			}
+
+			if (routeType === "tools") {
+				return { agentId, routeType: "syncTools" };
+			}
+		}
+
+		if (rest.length === 2 && rest[0] === "tools" && rest[1] === "sync") {
+			return { agentId, routeType: "syncTools" };
 		}
 
 		if (rest.length === 2 && rest[0] === "conversations" && rest[1]) {
@@ -864,13 +918,4 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 	} catch {
 		return null;
 	}
-}
-
-function json(payload: unknown, status = 200): Response {
-	return new Response(JSON.stringify(payload), {
-		status,
-		headers: {
-			"content-type": "application/json; charset=utf-8",
-		},
-	});
 }
