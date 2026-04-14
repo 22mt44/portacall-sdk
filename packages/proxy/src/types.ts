@@ -42,7 +42,7 @@ export type PortacallConversationMessagesResponse = {
 	pagination: PortacallConversationPagination;
 };
 
-export type PortacallActionRunStatus =
+export type PortacallToolRunStatus =
 	| "pending"
 	| "approved"
 	| "denied"
@@ -50,20 +50,20 @@ export type PortacallActionRunStatus =
 	| "failed"
 	| "expired";
 
-export type PortacallActionRunDecision = "pending" | "approved" | "denied";
+export type PortacallToolRunDecision = "pending" | "approved" | "denied";
 
-export type PortacallActionRunSummary = {
+export type PortacallToolRunSummary = {
 	id: string;
 	conversationId: string;
 	agentId: string;
 	externalUserId: string;
 	toolCallId: string;
-	actionName: string;
+	toolName: string;
 	summary: string;
 	payload: Record<string, unknown>;
 	payloadJson: string;
-	status: PortacallActionRunStatus;
-	decision: PortacallActionRunDecision;
+	status: PortacallToolRunStatus;
+	decision: PortacallToolRunDecision;
 	message: string | null;
 	errorCode: string | null;
 	output: unknown | null;
@@ -72,33 +72,33 @@ export type PortacallActionRunSummary = {
 	resolvedAt: string | null;
 };
 
-export type PortacallActionRunListResponse = {
-	actionRuns: PortacallActionRunSummary[];
+export type PortacallToolRunListResponse = {
+	toolRuns: PortacallToolRunSummary[];
 };
 
-export type PortacallActionRunResolveResponse = {
-	actionRun: PortacallActionRunSummary;
+export type PortacallToolRunResolveResponse = {
+	toolRun: PortacallToolRunSummary;
 	event: {
 		type: "approval_resolved";
 		decision: "approved" | "denied";
-		actionRun: PortacallActionRunSummary;
+		toolRun: PortacallToolRunSummary;
 	};
 	conversation: PortacallConversationSummary;
 	assistantMessage?: PortacallConversationMessage;
 };
 
-export type PortacallActionRunCompleteBody = {
+export type PortacallToolRunCompleteBody = {
 	status: "completed" | "failed";
 	message?: string;
 	errorCode?: string;
 	output?: unknown;
 };
 
-export type PortacallActionRunCompleteResponse = {
-	actionRun: PortacallActionRunSummary;
+export type PortacallToolRunCompleteResponse = {
+	toolRun: PortacallToolRunSummary;
 	event: {
-		type: "action_completed";
-		actionRun: PortacallActionRunSummary;
+		type: "tool_completed";
+		toolRun: PortacallToolRunSummary;
 	};
 	conversation: PortacallConversationSummary;
 	assistantMessage?: PortacallConversationMessage;
@@ -106,9 +106,9 @@ export type PortacallActionRunCompleteResponse = {
 
 export type Portacall = {
 	handler(request: Request): Promise<Response>;
-	completeActionRun(
+	completeToolRun(
 		agentId: string,
-		actionRunId: string,
-		body: PortacallActionRunCompleteBody,
-	): Promise<PortacallActionRunCompleteResponse>;
+		toolRunId: string,
+		body: PortacallToolRunCompleteBody,
+	): Promise<PortacallToolRunCompleteResponse>;
 };

@@ -1,9 +1,9 @@
-export type PortacallActionWebhookEvent = {
+export type PortacallToolWebhookEvent = {
 	version: string;
-	type: "action.requested";
-	actionRunId: string;
+	type: "tool.requested";
+	toolRunId: string;
 	agentId: string;
-	action: {
+	tool: {
 		name: string;
 		description: string;
 	};
@@ -18,12 +18,12 @@ export type PortacallActionWebhookEvent = {
 	};
 };
 
-export type PortacallActionWebhookError = {
+export type PortacallToolWebhookError = {
 	message: string;
 	code?: string;
 };
 
-export type PortacallActionWebhookResponse =
+export type PortacallToolWebhookResponse =
 	| {
 			status: "accepted" | "completed";
 			message?: string;
@@ -32,15 +32,15 @@ export type PortacallActionWebhookResponse =
 	| {
 			status: "failed";
 			message?: string;
-			error: PortacallActionWebhookError;
+			error: PortacallToolWebhookError;
 	  };
 
 export type HandlePortacallWebhookOptions = {
 	secret: string;
 	maxAgeSeconds?: number;
-	onAction: (
-		event: PortacallActionWebhookEvent,
-	) => PortacallActionWebhookResponse | Promise<PortacallActionWebhookResponse>;
+	onTool: (
+		event: PortacallToolWebhookEvent,
+	) => PortacallToolWebhookResponse | Promise<PortacallToolWebhookResponse>;
 };
 
 const DEFAULT_MAX_AGE_SECONDS = 300;
@@ -117,7 +117,7 @@ export async function handlePortacallWebhook(
 		);
 	}
 
-	if (!isPortacallActionWebhookEvent(payload)) {
+	if (!isPortacallToolWebhookEvent(payload)) {
 		return json(
 			{
 				message: "Invalid Portacall webhook payload.",
@@ -128,7 +128,7 @@ export async function handlePortacallWebhook(
 	}
 
 	try {
-		const response = normalizeWebhookResponse(await options.onAction(payload));
+		const response = normalizeWebhookResponse(await options.onTool(payload));
 		return json(response);
 	} catch (error) {
 		return json(
@@ -141,7 +141,7 @@ export async function handlePortacallWebhook(
 							: "Unhandled Portacall webhook error.",
 					code: "handler_error",
 				},
-			} satisfies PortacallActionWebhookResponse,
+			} satisfies PortacallToolWebhookResponse,
 			500,
 		);
 	}
@@ -181,8 +181,8 @@ export async function verifyPortacallWebhookSignature(input: {
 const encoder = new TextEncoder();
 
 function normalizeWebhookResponse(
-	response: PortacallActionWebhookResponse,
-): PortacallActionWebhookResponse {
+	response: PortacallToolWebhookResponse,
+): PortacallToolWebhookResponse {
 	if (response.status === "failed") {
 		return {
 			status: "failed",
@@ -201,21 +201,21 @@ function normalizeWebhookResponse(
 	};
 }
 
-function isPortacallActionWebhookEvent(
+function isPortacallToolWebhookEvent(
 	value: unknown,
-): value is PortacallActionWebhookEvent {
+): value is PortacallToolWebhookEvent {
 	if (!isRecord(value)) {
 		return false;
 	}
 
 	if (
 		!isNonEmptyString(value.version) ||
-		value.type !== "action.requested" ||
-		!isNonEmptyString(value.actionRunId) ||
+		value.type !== "tool.requested" ||
+		!isNonEmptyString(value.toolRunId) ||
 		!isNonEmptyString(value.agentId) ||
-		!isRecord(value.action) ||
-		!isNonEmptyString(value.action.name) ||
-		!isNonEmptyString(value.action.description) ||
+		!isRecord(value.tool) ||
+		!isNonEmptyString(value.tool.name) ||
+		!isNonEmptyString(value.tool.description) ||
 		!isRecord(value.args) ||
 		!isRecord(value.actor) ||
 		!isRecord(value.meta) ||

@@ -4,11 +4,6 @@ export { handlePortacallRequest } from "./handler";
 export { portacall } from "./portacall";
 export type {
 	Portacall,
-	PortacallActionRunCompleteBody,
-	PortacallActionRunCompleteResponse,
-	PortacallActionRunListResponse,
-	PortacallActionRunResolveResponse,
-	PortacallActionRunSummary,
 	PortacallConversationListResponse,
 	PortacallConversationMessage,
 	PortacallConversationMessagesResponse,
@@ -16,12 +11,17 @@ export type {
 	PortacallConversationSummary,
 	PortacallFetch,
 	PortacallOptions,
+	PortacallToolRunCompleteBody,
+	PortacallToolRunCompleteResponse,
+	PortacallToolRunListResponse,
+	PortacallToolRunResolveResponse,
+	PortacallToolRunSummary,
 } from "./types";
 export type {
 	HandlePortacallWebhookOptions,
-	PortacallActionWebhookError,
-	PortacallActionWebhookEvent,
-	PortacallActionWebhookResponse,
+	PortacallToolWebhookError,
+	PortacallToolWebhookEvent,
+	PortacallToolWebhookResponse,
 } from "./webhooks";
 export {
 	createPortacallWebhookSignature,

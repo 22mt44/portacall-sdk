@@ -8,6 +8,13 @@
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		}
+	},
 	"sideEffects": false,
 	"homepage": "https://github.com/22mt44/portacall-sdk/tree/main/packages/client#readme",
 	"bugs": {

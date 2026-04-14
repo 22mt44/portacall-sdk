@@ -44,7 +44,7 @@ describe("portacall proxy", () => {
 		});
 	});
 
-	test("completeActionRun forwards asynchronous completion payloads", async () => {
+	test("completeToolRun forwards asynchronous completion payloads", async () => {
 		let receivedURL = "";
 		let receivedInit: RequestInit | undefined;
 		const proxy = portacall("sk_test_123", {
@@ -55,13 +55,13 @@ describe("portacall proxy", () => {
 
 				return new Response(
 					JSON.stringify({
-						actionRun: {
-							id: "action_run_123",
+						toolRun: {
+							id: "tool_run_123",
 							conversationId,
 							agentId: "agent_123",
 							externalUserId: "user_123",
 							toolCallId: "tool_123",
-							actionName: "cancel_order",
+							toolName: "cancel_order",
 							summary: "Cancel order #12345",
 							payload: { orderId: "12345" },
 							payloadJson: '{"orderId":"12345"}',
@@ -75,14 +75,14 @@ describe("portacall proxy", () => {
 							resolvedAt: "2026-03-27T10:07:00.000Z",
 						},
 						event: {
-							type: "action_completed",
-							actionRun: {
-								id: "action_run_123",
+							type: "tool_completed",
+							toolRun: {
+								id: "tool_run_123",
 								conversationId,
 								agentId: "agent_123",
 								externalUserId: "user_123",
 								toolCallId: "tool_123",
-								actionName: "cancel_order",
+								toolName: "cancel_order",
 								summary: "Cancel order #12345",
 								payload: { orderId: "12345" },
 								payloadJson: '{"orderId":"12345"}',
@@ -114,22 +114,22 @@ describe("portacall proxy", () => {
 		});
 
 		await expect(
-			proxy.completeActionRun("agent_123", "action_run_123", {
+			proxy.completeToolRun("agent_123", "tool_run_123", {
 				status: "completed",
 				message: "Order canceled.",
 				output: { orderId: "12345", canceled: true },
 			}),
 		).resolves.toMatchObject({
-			actionRun: {
-				id: "action_run_123",
+			toolRun: {
+				id: "tool_run_123",
 				status: "completed",
 			},
 			event: {
-				type: "action_completed",
+				type: "tool_completed",
 			},
 		});
 		expect(receivedURL).toBe(
-			"https://example.com/api/portacall/agent_123/action-runs/action_run_123/complete",
+			"https://example.com/api/portacall/agent_123/tool-runs/tool_run_123/complete",
 		);
 		expect(receivedInit?.method).toBe("POST");
 		expect(receivedInit?.headers).toEqual({

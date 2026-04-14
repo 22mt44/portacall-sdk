@@ -1,13 +1,13 @@
 "use client";
 
 import {
-	type PortacallActionRunSummary,
 	type PortacallClient,
 	type PortacallClientFetch,
 	type PortacallClientHealth,
 	type PortacallConversationPagination,
 	type PortacallConversationSummary,
 	type PortacallStreamEvent,
+	type PortacallToolRunSummary,
 	portacall,
 } from "@portacall/client";
 import {
@@ -33,7 +33,7 @@ export type PortacallChatMessage = {
 	isStreaming?: boolean;
 };
 
-export type PortacallPendingApproval = PortacallActionRunSummary;
+export type PortacallPendingApproval = PortacallToolRunSummary;
 
 export type UsePortacallClientOptions = {
 	backendURL: string | undefined;
@@ -114,8 +114,8 @@ export type UsePortacallChatResult = {
 		archived: boolean,
 	) => Promise<PortacallConversationSummary | null>;
 	deleteConversation: (conversationId: string) => Promise<boolean>;
-	approvePendingAction: (actionRunId: string) => Promise<boolean>;
-	denyPendingAction: (actionRunId: string) => Promise<boolean>;
+	approvePendingTool: (toolRunId: string) => Promise<boolean>;
+	denyPendingTool: (toolRunId: string) => Promise<boolean>;
 	resetConversation: () => void;
 	setErrorMessage: (message: string) => void;
 	clearError: () => void;
@@ -133,7 +133,7 @@ export function PortacallProvider({
 	...props
 }: PortacallProviderProps) {
 	const createdClient = useStablePortacallClient(
-		"client" in props && props.client
+		"client" in props
 			? undefined
 			: {
 					backendURL: props.backendURL,
@@ -142,8 +142,7 @@ export function PortacallProvider({
 					fetch: props.fetch,
 				},
 	);
-	const value =
-		"client" in props && props.client ? props.client : createdClient;
+	const value = "client" in props ? props.client : createdClient;
 
 	if (!value) {
 		throw new Error(
@@ -390,7 +389,7 @@ export function usePortacallChat({
 			try {
 				setIsLoadingMessages(true);
 				setError("");
-				const [response, actionRuns] = await Promise.all([
+				const [response, toolRuns] = await Promise.all([
 					resolvedClient.getConversationMessages(
 						conversationId,
 						externalUserId,
@@ -398,7 +397,7 @@ export function usePortacallChat({
 							limit: messagePageSize,
 						},
 					),
-					resolvedClient.getActionRuns(conversationId, externalUserId, {
+					resolvedClient.getToolRuns(conversationId, externalUserId, {
 						status: "pending",
 					}),
 				]);
@@ -412,7 +411,7 @@ export function usePortacallChat({
 						createdAt: entry.createdAt,
 					})),
 				);
-				setPendingApprovals(actionRuns.actionRuns);
+				setPendingApprovals(toolRuns.toolRuns);
 				setResolvingApprovalIds([]);
 				setStreamEvents([]);
 				syncConversation(response.conversation);
@@ -506,9 +505,9 @@ export function usePortacallChat({
 					}
 
 					if (event.type === "approval_requested") {
-						syncPendingApproval(event.actionRun);
+						syncPendingApproval(event.toolRun);
 						appendStreamEvent(
-							`Approval requested for ${event.actionRun.actionName}`,
+							`Approval requested for ${event.toolRun.toolName}`,
 						);
 						continue;
 					}
@@ -711,28 +710,28 @@ export function usePortacallChat({
 		],
 	);
 
-	const resolvePendingAction = useCallback(
-		async (actionRunId: string, decision: "approve" | "deny") => {
+	const resolvePendingTool = useCallback(
+		async (toolRunId: string, decision: "approve" | "deny") => {
 			try {
 				setError("");
 				setResolvingApprovalIds((current) =>
-					current.includes(actionRunId) ? current : [...current, actionRunId],
+					current.includes(toolRunId) ? current : [...current, toolRunId],
 				);
 				const response =
 					decision === "approve"
-						? await resolvedClient.approveActionRun(actionRunId, externalUserId)
-						: await resolvedClient.denyActionRun(actionRunId, externalUserId);
+						? await resolvedClient.approveToolRun(toolRunId, externalUserId)
+						: await resolvedClient.denyToolRun(toolRunId, externalUserId);
 
 				setResolvingApprovalIds((current) =>
-					current.filter((entry) => entry !== actionRunId),
+					current.filter((entry) => entry !== toolRunId),
 				);
 				setPendingApprovals((current) =>
-					current.filter((entry) => entry.id !== actionRunId),
+					current.filter((entry) => entry.id !== toolRunId),
 				);
 				setSelectedConversationId(response.conversation.id);
 				syncConversation(response.conversation);
 				appendStreamEvent(
-					`${decision === "approve" ? "Approved" : "Denied"} ${response.actionRun.actionName}`,
+					`${decision === "approve" ? "Approved" : "Denied"} ${response.toolRun.toolName}`,
 				);
 
 				const assistantMessage = response.assistantMessage;
@@ -752,7 +751,7 @@ export function usePortacallChat({
 				return true;
 			} catch (nextError) {
 				setResolvingApprovalIds((current) =>
-					current.filter((entry) => entry !== actionRunId),
+					current.filter((entry) => entry !== toolRunId),
 				);
 				setError(getErrorMessage(nextError, "Unknown approval error."));
 				return false;
@@ -767,14 +766,14 @@ export function usePortacallChat({
 		],
 	);
 
-	const approvePendingAction = useCallback(
-		async (actionRunId: string) => resolvePendingAction(actionRunId, "approve"),
-		[resolvePendingAction],
+	const approvePendingTool = useCallback(
+		async (toolRunId: string) => resolvePendingTool(toolRunId, "approve"),
+		[resolvePendingTool],
 	);
 
-	const denyPendingAction = useCallback(
-		async (actionRunId: string) => resolvePendingAction(actionRunId, "deny"),
-		[resolvePendingAction],
+	const denyPendingTool = useCallback(
+		async (toolRunId: string) => resolvePendingTool(toolRunId, "deny"),
+		[resolvePendingTool],
 	);
 
 	const resetConversation = useCallback(() => {
@@ -851,8 +850,8 @@ export function usePortacallChat({
 		renameConversation,
 		setConversationArchived,
 		deleteConversation,
-		approvePendingAction,
-		denyPendingAction,
+		approvePendingTool,
+		denyPendingTool,
 		resetConversation,
 		setErrorMessage,
 		clearError,

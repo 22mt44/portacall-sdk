@@ -1,11 +1,11 @@
 import type {
-	PortacallActionRunCompleteBody,
-	PortacallActionRunCompleteResponse,
-	PortacallActionRunListResponse,
-	PortacallActionRunResolveResponse,
 	PortacallConversationListResponse,
 	PortacallConversationMessagesResponse,
 	PortacallConversationSummary,
+	PortacallToolRunCompleteBody,
+	PortacallToolRunCompleteResponse,
+	PortacallToolRunListResponse,
+	PortacallToolRunResolveResponse,
 } from "./types";
 
 type PortacallProxyHandler = {
@@ -35,29 +35,29 @@ type PortacallProxyHandler = {
 			offset?: number;
 		},
 	): Promise<PortacallConversationMessagesResponse>;
-	getActionRuns(
+	getToolRuns(
 		agentId: string,
 		conversationId: string,
 		externalUserId: string,
 		options?: {
 			status?: string;
 		},
-	): Promise<PortacallActionRunListResponse>;
-	approveActionRun(
+	): Promise<PortacallToolRunListResponse>;
+	approveToolRun(
 		agentId: string,
-		actionRunId: string,
+		toolRunId: string,
 		externalUserId: string,
-	): Promise<PortacallActionRunResolveResponse>;
-	denyActionRun(
+	): Promise<PortacallToolRunResolveResponse>;
+	denyToolRun(
 		agentId: string,
-		actionRunId: string,
+		toolRunId: string,
 		externalUserId: string,
-	): Promise<PortacallActionRunResolveResponse>;
-	completeActionRun(
+	): Promise<PortacallToolRunResolveResponse>;
+	completeToolRun(
 		agentId: string,
-		actionRunId: string,
-		body: PortacallActionRunCompleteBody,
-	): Promise<PortacallActionRunCompleteResponse>;
+		toolRunId: string,
+		body: PortacallToolRunCompleteBody,
+	): Promise<PortacallToolRunCompleteResponse>;
 	openStream(
 		agentId: string,
 		message: string,
@@ -94,21 +94,21 @@ type PortacallProxyHandler = {
 type RouteMatch =
 	| {
 			agentId: string;
-			action: "health" | "chat" | "stream" | "conversations";
+			routeType: "health" | "chat" | "stream" | "conversations";
 	  }
 	| {
 			agentId: string;
 			conversationId: string;
-			action:
+			routeType:
 				| "conversation"
 				| "conversationArchive"
 				| "conversationMessages"
-				| "conversationActionRuns";
+				| "conversationToolRuns";
 	  }
 	| {
 			agentId: string;
-			actionRunId: string;
-			action: "approveActionRun" | "completeActionRun" | "denyActionRun";
+			toolRunId: string;
+			routeType: "approveToolRun" | "completeToolRun" | "denyToolRun";
 	  };
 
 const STREAM_HEADERS = {
@@ -128,7 +128,7 @@ export async function handlePortacallRequest(
 		return json({ message: "Not found." }, 404);
 	}
 
-	if (route.action === "health") {
+	if (route.routeType === "health") {
 		return request.method === "GET"
 			? json({ ok: true, configured: portacall.configured })
 			: methodNotAllowed("GET");
@@ -138,7 +138,7 @@ export async function handlePortacallRequest(
 		return missingConfiguration();
 	}
 
-	if (route.action === "conversations") {
+	if (route.routeType === "conversations") {
 		if (request.method === "GET") {
 			const parsedQuery = readConversationListQuery(url.searchParams);
 			if ("error" in parsedQuery) {
@@ -187,7 +187,7 @@ export async function handlePortacallRequest(
 		return methodNotAllowed("GET, POST");
 	}
 
-	if (route.action === "conversationMessages") {
+	if (route.routeType === "conversationMessages") {
 		if (request.method !== "GET") {
 			return methodNotAllowed("GET");
 		}
@@ -214,19 +214,19 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (route.action === "conversationActionRuns") {
+	if (route.routeType === "conversationToolRuns") {
 		if (request.method !== "GET") {
 			return methodNotAllowed("GET");
 		}
 
-		const parsedQuery = readActionRunListQuery(url.searchParams);
+		const parsedQuery = readToolRunListQuery(url.searchParams);
 		if ("error" in parsedQuery) {
 			return json({ message: parsedQuery.error }, 400);
 		}
 
 		try {
 			return json(
-				await portacall.getActionRuns(
+				await portacall.getToolRuns(
 					route.agentId,
 					route.conversationId,
 					parsedQuery.externalUserId,
@@ -240,7 +240,7 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (route.action === "conversation") {
+	if (route.routeType === "conversation") {
 		if (request.method === "PATCH") {
 			const payload = await readConversationRenameInput(request);
 			if ("error" in payload) {
@@ -285,7 +285,7 @@ export async function handlePortacallRequest(
 		return methodNotAllowed("PATCH, DELETE");
 	}
 
-	if (route.action === "conversationArchive") {
+	if (route.routeType === "conversationArchive") {
 		if (request.method !== "PATCH") {
 			return methodNotAllowed("PATCH");
 		}
@@ -309,7 +309,7 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (route.action === "chat") {
+	if (route.routeType === "chat") {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
@@ -335,7 +335,7 @@ export async function handlePortacallRequest(
 		}
 	}
 
-	if (route.action === "stream") {
+	if (route.routeType === "stream") {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
@@ -368,45 +368,45 @@ export async function handlePortacallRequest(
 	}
 
 	if (
-		route.action === "approveActionRun" ||
-		route.action === "completeActionRun" ||
-		route.action === "denyActionRun"
+		route.routeType === "approveToolRun" ||
+		route.routeType === "completeToolRun" ||
+		route.routeType === "denyToolRun"
 	) {
 		if (request.method !== "POST") {
 			return methodNotAllowed("POST");
 		}
 
 		try {
-			if (route.action === "completeActionRun") {
-				const payload = await readActionRunCompleteInput(request);
+			if (route.routeType === "completeToolRun") {
+				const payload = await readToolRunCompleteInput(request);
 				if ("error" in payload) {
 					return json({ message: payload.error }, 400);
 				}
 
 				return json(
-					await portacall.completeActionRun(
+					await portacall.completeToolRun(
 						route.agentId,
-						route.actionRunId,
+						route.toolRunId,
 						payload,
 					),
 				);
 			}
 
-			const payload = await readActionRunResolveInput(request);
+			const payload = await readToolRunResolveInput(request);
 			if ("error" in payload) {
 				return json({ message: payload.error }, 400);
 			}
 
 			return json(
-				route.action === "approveActionRun"
-					? await portacall.approveActionRun(
+				route.routeType === "approveToolRun"
+					? await portacall.approveToolRun(
 							route.agentId,
-							route.actionRunId,
+							route.toolRunId,
 							payload.externalUserId,
 						)
-					: await portacall.denyActionRun(
+					: await portacall.denyToolRun(
 							route.agentId,
-							route.actionRunId,
+							route.toolRunId,
 							payload.externalUserId,
 						),
 			);
@@ -530,7 +530,7 @@ async function readConversationArchiveInput(request: Request): Promise<
 	};
 }
 
-async function readActionRunResolveInput(request: Request): Promise<
+async function readToolRunResolveInput(request: Request): Promise<
 	| {
 			externalUserId: string;
 	  }
@@ -549,9 +549,9 @@ async function readActionRunResolveInput(request: Request): Promise<
 	};
 }
 
-async function readActionRunCompleteInput(
+async function readToolRunCompleteInput(
 	request: Request,
-): Promise<PortacallActionRunCompleteBody | { error: string }> {
+): Promise<PortacallToolRunCompleteBody | { error: string }> {
 	const payload = (await request.json().catch(() => null)) as {
 		status?: "completed" | "failed";
 		message?: string;
@@ -653,7 +653,7 @@ function readConversationMessagesQuery(searchParams: URLSearchParams):
 	};
 }
 
-function readActionRunListQuery(searchParams: URLSearchParams):
+function readToolRunListQuery(searchParams: URLSearchParams):
 	| {
 			externalUserId: string;
 			status?: string;
@@ -784,14 +784,14 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 		const agentId = decodeURIComponent(encodedAgentId);
 
 		if (rest.length === 1) {
-			const [action] = rest;
+			const [routeType] = rest;
 			if (
-				action === "health" ||
-				action === "chat" ||
-				action === "stream" ||
-				action === "conversations"
+				routeType === "health" ||
+				routeType === "chat" ||
+				routeType === "stream" ||
+				routeType === "conversations"
 			) {
-				return { agentId, action };
+				return { agentId, routeType };
 			}
 		}
 
@@ -799,7 +799,7 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 			return {
 				agentId,
 				conversationId: decodeURIComponent(rest[1]),
-				action: "conversation",
+				routeType: "conversation",
 			};
 		}
 
@@ -813,7 +813,7 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 				return {
 					agentId,
 					conversationId: decodeURIComponent(rest[1]),
-					action: "conversationMessages",
+					routeType: "conversationMessages",
 				};
 			}
 
@@ -821,41 +821,41 @@ function matchPortacallRoute(pathname: string): RouteMatch | null {
 				return {
 					agentId,
 					conversationId: decodeURIComponent(rest[1]),
-					action: "conversationArchive",
+					routeType: "conversationArchive",
 				};
 			}
 
-			if (rest[2] === "action-runs") {
+			if (rest[2] === "tool-runs") {
 				return {
 					agentId,
 					conversationId: decodeURIComponent(rest[1]),
-					action: "conversationActionRuns",
+					routeType: "conversationToolRuns",
 				};
 			}
 		}
 
-		if (rest.length === 3 && rest[0] === "action-runs" && rest[1] && rest[2]) {
+		if (rest.length === 3 && rest[0] === "tool-runs" && rest[1] && rest[2]) {
 			if (rest[2] === "approve") {
 				return {
 					agentId,
-					actionRunId: decodeURIComponent(rest[1]),
-					action: "approveActionRun",
+					toolRunId: decodeURIComponent(rest[1]),
+					routeType: "approveToolRun",
 				};
 			}
 
 			if (rest[2] === "deny") {
 				return {
 					agentId,
-					actionRunId: decodeURIComponent(rest[1]),
-					action: "denyActionRun",
+					toolRunId: decodeURIComponent(rest[1]),
+					routeType: "denyToolRun",
 				};
 			}
 
 			if (rest[2] === "complete") {
 				return {
 					agentId,
-					actionRunId: decodeURIComponent(rest[1]),
-					action: "completeActionRun",
+					toolRunId: decodeURIComponent(rest[1]),
+					routeType: "completeToolRun",
 				};
 			}
 		}

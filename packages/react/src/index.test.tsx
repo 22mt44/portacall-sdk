@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { PortacallActionRunSummary } from "@portacall/client";
+import type { PortacallToolRunSummary } from "@portacall/client";
 import { useEffect } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import {
@@ -235,11 +235,11 @@ describe("@portacall/react", () => {
 	});
 
 	test("usePortacallChat tracks pending approvals and resolves them", async () => {
-		const pendingApproval = createActionRunSummary();
-		const resolvedApproval = createActionRunSummary({
+		const pendingApproval = createToolRunSummary();
+		const resolvedApproval = createToolRunSummary({
 			status: "completed",
 			decision: "approved",
-			message: "Action accepted by the webhook endpoint.",
+			message: "Tool accepted by the webhook endpoint.",
 			resolvedAt: "2026-03-27T10:06:00.000Z",
 			updatedAt: "2026-03-27T10:06:00.000Z",
 		});
@@ -267,15 +267,15 @@ describe("@portacall/react", () => {
 				};
 				yield {
 					type: "approval_requested",
-					actionRun: pendingApproval,
+					toolRun: pendingApproval,
 				};
 			},
-			approveActionRun: async () => ({
-				actionRun: resolvedApproval,
+			approveToolRun: async () => ({
+				toolRun: resolvedApproval,
 				event: {
 					type: "approval_resolved",
 					decision: "approved",
-					actionRun: resolvedApproval,
+					toolRun: resolvedApproval,
 				},
 				conversation: createConversationSummary({
 					id: conversationId,
@@ -322,7 +322,7 @@ describe("@portacall/react", () => {
 		]);
 
 		await act(async () => {
-			const approved = await readChat(latestChat).approvePendingAction(
+			const approved = await readChat(latestChat).approvePendingTool(
 				pendingApproval.id,
 			);
 			expect(approved).toBe(true);
@@ -342,7 +342,7 @@ describe("@portacall/react", () => {
 	});
 
 	test("usePortacallChat resets transcript state when externalUserId changes", async () => {
-		const pendingApproval = createActionRunSummary();
+		const pendingApproval = createToolRunSummary();
 		const getConversationUsers: string[] = [];
 		const resetCalls: string[] = [];
 		let latestChat: UsePortacallChatResult | null = null;
@@ -372,8 +372,8 @@ describe("@portacall/react", () => {
 					pagination: createPagination(),
 				};
 			},
-			getActionRuns: async () => ({
-				actionRuns: [pendingApproval],
+			getToolRuns: async () => ({
+				toolRuns: [pendingApproval],
 			}),
 			resetConversation: () => {
 				resetCalls.push("reset");
@@ -528,22 +528,22 @@ function createMockClient(
 				}
 			);
 		},
-		async getActionRuns(conversationId, externalUserId, options) {
+		async getToolRuns(conversationId, externalUserId, options) {
 			return (
-				(await overrides.getActionRuns?.(
+				(await overrides.getToolRuns?.(
 					conversationId,
 					externalUserId,
 					options,
 				)) ?? {
-					actionRuns: [],
+					toolRuns: [],
 				}
 			);
 		},
-		async approveActionRun(actionRunId, externalUserId) {
+		async approveToolRun(toolRunId, externalUserId) {
 			return (
-				(await overrides.approveActionRun?.(actionRunId, externalUserId)) ?? {
-					actionRun: createActionRunSummary({
-						id: actionRunId,
+				(await overrides.approveToolRun?.(toolRunId, externalUserId)) ?? {
+					toolRun: createToolRunSummary({
+						id: toolRunId,
 						externalUserId,
 						status: "completed",
 						decision: "approved",
@@ -553,8 +553,8 @@ function createMockClient(
 					event: {
 						type: "approval_resolved",
 						decision: "approved",
-						actionRun: createActionRunSummary({
-							id: actionRunId,
+						toolRun: createToolRunSummary({
+							id: toolRunId,
 							externalUserId,
 							status: "completed",
 							decision: "approved",
@@ -568,11 +568,11 @@ function createMockClient(
 				}
 			);
 		},
-		async denyActionRun(actionRunId, externalUserId) {
+		async denyToolRun(toolRunId, externalUserId) {
 			return (
-				(await overrides.denyActionRun?.(actionRunId, externalUserId)) ?? {
-					actionRun: createActionRunSummary({
-						id: actionRunId,
+				(await overrides.denyToolRun?.(toolRunId, externalUserId)) ?? {
+					toolRun: createToolRunSummary({
+						id: toolRunId,
 						externalUserId,
 						status: "denied",
 						decision: "denied",
@@ -582,8 +582,8 @@ function createMockClient(
 					event: {
 						type: "approval_resolved",
 						decision: "denied",
-						actionRun: createActionRunSummary({
-							id: actionRunId,
+						toolRun: createToolRunSummary({
+							id: toolRunId,
 							externalUserId,
 							status: "denied",
 							decision: "denied",
@@ -683,16 +683,16 @@ function createConversationSummary(
 	};
 }
 
-function createActionRunSummary(
-	overrides: Partial<PortacallActionRunSummary> = {},
-): PortacallActionRunSummary {
+function createToolRunSummary(
+	overrides: Partial<PortacallToolRunSummary> = {},
+): PortacallToolRunSummary {
 	return {
 		id: overrides.id ?? "64d660c4-68ef-4f9a-9f80-45fd5551fb5c",
 		conversationId: overrides.conversationId ?? conversationId,
 		agentId: overrides.agentId ?? "agent_123",
 		externalUserId: overrides.externalUserId ?? "user_123",
 		toolCallId: overrides.toolCallId ?? "tool_123",
-		actionName: overrides.actionName ?? "cancel_order",
+		toolName: overrides.toolName ?? "cancel_order",
 		summary: overrides.summary ?? "Cancel order #12345",
 		payload: overrides.payload ?? { orderId: "12345" },
 		payloadJson: overrides.payloadJson ?? JSON.stringify({ orderId: "12345" }),

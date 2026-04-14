@@ -2,25 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { handlePortacallRequest } from "./handler";
 
 describe("handlePortacallRequest", () => {
-	test("forwards approve action-run requests", async () => {
+	test("forwards approve tool-run requests", async () => {
 		const calls: Array<{
 			agentId: string;
-			actionRunId: string;
+			toolRunId: string;
 			externalUserId: string;
 		}> = [];
 
 		const response = await handlePortacallRequest(
 			createMockPortacall({
-				approveActionRun: async (agentId, actionRunId, externalUserId) => {
-					calls.push({ agentId, actionRunId, externalUserId });
+				approveToolRun: async (agentId, toolRunId, externalUserId) => {
+					calls.push({ agentId, toolRunId, externalUserId });
 					return {
-						actionRun: {
-							id: actionRunId,
+						toolRun: {
+							id: toolRunId,
 							conversationId: "conversation_123",
 							agentId,
 							externalUserId,
 							toolCallId: "tool_123",
-							actionName: "cancel order",
+							toolName: "cancel order",
 							summary: "Cancel order",
 							payload: { orderId: "34567" },
 							payloadJson: '{"orderId":"34567"}',
@@ -36,13 +36,13 @@ describe("handlePortacallRequest", () => {
 						event: {
 							type: "approval_resolved" as const,
 							decision: "approved" as const,
-							actionRun: {
-								id: actionRunId,
+							toolRun: {
+								id: toolRunId,
 								conversationId: "conversation_123",
 								agentId,
 								externalUserId,
 								toolCallId: "tool_123",
-								actionName: "cancel order",
+								toolName: "cancel order",
 								summary: "Cancel order",
 								payload: { orderId: "34567" },
 								payloadJson: '{"orderId":"34567"}',
@@ -68,7 +68,7 @@ describe("handlePortacallRequest", () => {
 				},
 			}),
 			new Request(
-				"https://example.com/api/portacall/agent_123/action-runs/action_run_123/approve",
+				"https://example.com/api/portacall/agent_123/tool-runs/tool_run_123/approve",
 				{
 					method: "POST",
 					headers: {
@@ -85,16 +85,16 @@ describe("handlePortacallRequest", () => {
 		expect(calls).toEqual([
 			{
 				agentId: "agent_123",
-				actionRunId: "action_run_123",
+				toolRunId: "tool_run_123",
 				externalUserId: "user_123",
 			},
 		]);
 	});
 
-	test("forwards async action-run completion requests", async () => {
+	test("forwards async tool-run completion requests", async () => {
 		const calls: Array<{
 			agentId: string;
-			actionRunId: string;
+			toolRunId: string;
 			body: {
 				status: "completed" | "failed";
 				message?: string;
@@ -105,16 +105,16 @@ describe("handlePortacallRequest", () => {
 
 		const response = await handlePortacallRequest(
 			createMockPortacall({
-				completeActionRun: async (agentId, actionRunId, body) => {
-					calls.push({ agentId, actionRunId, body });
+				completeToolRun: async (agentId, toolRunId, body) => {
+					calls.push({ agentId, toolRunId, body });
 					return {
-						actionRun: {
-							id: actionRunId,
+						toolRun: {
+							id: toolRunId,
 							conversationId: "conversation_123",
 							agentId,
 							externalUserId: "user_123",
 							toolCallId: "tool_123",
-							actionName: "cancel order",
+							toolName: "cancel order",
 							summary: "Cancel order",
 							payload: { orderId: "34567" },
 							payloadJson: '{"orderId":"34567"}',
@@ -128,14 +128,14 @@ describe("handlePortacallRequest", () => {
 							resolvedAt: "2026-04-03T10:02:00.000Z",
 						},
 						event: {
-							type: "action_completed" as const,
-							actionRun: {
-								id: actionRunId,
+							type: "tool_completed" as const,
+							toolRun: {
+								id: toolRunId,
 								conversationId: "conversation_123",
 								agentId,
 								externalUserId: "user_123",
 								toolCallId: "tool_123",
-								actionName: "cancel order",
+								toolName: "cancel order",
 								summary: "Cancel order",
 								payload: { orderId: "34567" },
 								payloadJson: '{"orderId":"34567"}',
@@ -161,7 +161,7 @@ describe("handlePortacallRequest", () => {
 				},
 			}),
 			new Request(
-				"https://example.com/api/portacall/agent_123/action-runs/action_run_123/complete",
+				"https://example.com/api/portacall/agent_123/tool-runs/tool_run_123/complete",
 				{
 					method: "POST",
 					headers: {
@@ -180,7 +180,7 @@ describe("handlePortacallRequest", () => {
 		expect(calls).toEqual([
 			{
 				agentId: "agent_123",
-				actionRunId: "action_run_123",
+				toolRunId: "tool_run_123",
 				body: {
 					status: "completed",
 					message: "Order canceled.",
@@ -190,23 +190,23 @@ describe("handlePortacallRequest", () => {
 		]);
 	});
 
-	test("lists action runs for a conversation", async () => {
+	test("lists tool runs for a conversation", async () => {
 		const response = await handlePortacallRequest(
 			createMockPortacall({
-				getActionRuns: async (
+				getToolRuns: async (
 					agentId,
 					conversationId,
 					externalUserId,
 					options,
 				) => ({
-					actionRuns: [
+					toolRuns: [
 						{
-							id: "action_run_123",
+							id: "tool_run_123",
 							conversationId,
 							agentId,
 							externalUserId,
 							toolCallId: "tool_123",
-							actionName: "cancel order",
+							toolName: "cancel order",
 							summary: "Cancel order",
 							payload: { orderId: "34567" },
 							payloadJson: '{"orderId":"34567"}',
@@ -223,15 +223,15 @@ describe("handlePortacallRequest", () => {
 				}),
 			}),
 			new Request(
-				"https://example.com/api/portacall/agent_123/conversations/conversation_123/action-runs?externalUserId=user_123&status=pending",
+				"https://example.com/api/portacall/agent_123/conversations/conversation_123/tool-runs?externalUserId=user_123&status=pending",
 			),
 		);
 
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
-			actionRuns: [
+			toolRuns: [
 				expect.objectContaining({
-					id: "action_run_123",
+					id: "tool_run_123",
 					status: "pending",
 				}),
 			],
@@ -273,17 +273,17 @@ function createMockPortacall(
 				hasMore: false,
 			},
 		}),
-		getActionRuns: async () => ({
-			actionRuns: [],
+		getToolRuns: async () => ({
+			toolRuns: [],
 		}),
-		approveActionRun: async () => ({
-			actionRun: {
-				id: "action_run_123",
+		approveToolRun: async () => ({
+			toolRun: {
+				id: "tool_run_123",
 				conversationId: "conversation_123",
 				agentId: "agent_123",
 				externalUserId: "user_123",
 				toolCallId: "tool_123",
-				actionName: "cancel order",
+				toolName: "cancel order",
 				summary: "Cancel order",
 				payload: {},
 				payloadJson: "{}",
@@ -299,13 +299,13 @@ function createMockPortacall(
 			event: {
 				type: "approval_resolved",
 				decision: "approved",
-				actionRun: {
-					id: "action_run_123",
+				toolRun: {
+					id: "tool_run_123",
 					conversationId: "conversation_123",
 					agentId: "agent_123",
 					externalUserId: "user_123",
 					toolCallId: "tool_123",
-					actionName: "cancel order",
+					toolName: "cancel order",
 					summary: "Cancel order",
 					payload: {},
 					payloadJson: "{}",
@@ -328,14 +328,14 @@ function createMockPortacall(
 				archivedAt: null,
 			},
 		}),
-		denyActionRun: async () => ({
-			actionRun: {
-				id: "action_run_123",
+		denyToolRun: async () => ({
+			toolRun: {
+				id: "tool_run_123",
 				conversationId: "conversation_123",
 				agentId: "agent_123",
 				externalUserId: "user_123",
 				toolCallId: "tool_123",
-				actionName: "cancel order",
+				toolName: "cancel order",
 				summary: "Cancel order",
 				payload: {},
 				payloadJson: "{}",
@@ -351,13 +351,13 @@ function createMockPortacall(
 			event: {
 				type: "approval_resolved",
 				decision: "denied",
-				actionRun: {
-					id: "action_run_123",
+				toolRun: {
+					id: "tool_run_123",
 					conversationId: "conversation_123",
 					agentId: "agent_123",
 					externalUserId: "user_123",
 					toolCallId: "tool_123",
-					actionName: "cancel order",
+					toolName: "cancel order",
 					summary: "Cancel order",
 					payload: {},
 					payloadJson: "{}",
@@ -380,14 +380,14 @@ function createMockPortacall(
 				archivedAt: null,
 			},
 		}),
-		completeActionRun: async (agentId, actionRunId, body) => ({
-			actionRun: {
-				id: actionRunId,
+		completeToolRun: async (agentId, toolRunId, body) => ({
+			toolRun: {
+				id: toolRunId,
 				conversationId: "conversation_123",
 				agentId,
 				externalUserId: "user_123",
 				toolCallId: "tool_123",
-				actionName: "cancel order",
+				toolName: "cancel order",
 				summary: "Cancel order",
 				payload: {},
 				payloadJson: "{}",
@@ -401,14 +401,14 @@ function createMockPortacall(
 				resolvedAt: "2026-04-03T10:01:00.000Z",
 			},
 			event: {
-				type: "action_completed",
-				actionRun: {
-					id: actionRunId,
+				type: "tool_completed",
+				toolRun: {
+					id: toolRunId,
 					conversationId: "conversation_123",
 					agentId: "agent_123",
 					externalUserId: "user_123",
 					toolCallId: "tool_123",
-					actionName: "cancel order",
+					toolName: "cancel order",
 					summary: "Cancel order",
 					payload: {},
 					payloadJson: "{}",

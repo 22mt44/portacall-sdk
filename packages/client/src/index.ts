@@ -50,7 +50,7 @@ export type PortacallConversationMessage = {
 	createdAt: string;
 };
 
-export type PortacallActionRunStatus =
+export type PortacallToolRunStatus =
 	| "pending"
 	| "approved"
 	| "denied"
@@ -58,20 +58,20 @@ export type PortacallActionRunStatus =
 	| "failed"
 	| "expired";
 
-export type PortacallActionRunDecision = "pending" | "approved" | "denied";
+export type PortacallToolRunDecision = "pending" | "approved" | "denied";
 
-export type PortacallActionRunSummary = {
+export type PortacallToolRunSummary = {
 	id: string;
 	conversationId: string;
 	agentId: string;
 	externalUserId: string;
 	toolCallId: string;
-	actionName: string;
+	toolName: string;
 	summary: string;
 	payload: Record<string, unknown>;
 	payloadJson: string;
-	status: PortacallActionRunStatus;
-	decision: PortacallActionRunDecision;
+	status: PortacallToolRunStatus;
+	decision: PortacallToolRunDecision;
 	message: string | null;
 	errorCode: string | null;
 	output: unknown | null;
@@ -80,16 +80,16 @@ export type PortacallActionRunSummary = {
 	resolvedAt: string | null;
 };
 
-export type PortacallActionRunListOptions = {
-	status?: PortacallActionRunStatus;
+export type PortacallToolRunListOptions = {
+	status?: PortacallToolRunStatus;
 };
 
-export type PortacallActionRunListResponse = {
-	actionRuns: PortacallActionRunSummary[];
+export type PortacallToolRunListResponse = {
+	toolRuns: PortacallToolRunSummary[];
 };
 
-export type PortacallActionRunResolveResponse = {
-	actionRun: PortacallActionRunSummary;
+export type PortacallToolRunResolveResponse = {
+	toolRun: PortacallToolRunSummary;
 	event: PortacallStreamApprovalResolvedEvent;
 	conversation: PortacallConversationSummary;
 	assistantMessage?: PortacallConversationMessage;
@@ -165,13 +165,13 @@ export type PortacallStreamToolCallFailedEvent = {
 
 export type PortacallStreamApprovalRequestedEvent = {
 	type: "approval_requested";
-	actionRun: PortacallActionRunSummary;
+	toolRun: PortacallToolRunSummary;
 };
 
 export type PortacallStreamApprovalResolvedEvent = {
 	type: "approval_resolved";
 	decision: "approved" | "denied";
-	actionRun: PortacallActionRunSummary;
+	toolRun: PortacallToolRunSummary;
 };
 
 export type PortacallStreamMessageCompletedEvent = {
@@ -238,19 +238,19 @@ export type PortacallClient = {
 		externalUserId: string,
 		options?: PortacallConversationMessagesOptions,
 	): Promise<PortacallConversationMessagesResponse>;
-	getActionRuns(
+	getToolRuns(
 		conversationId: string,
 		externalUserId: string,
-		options?: PortacallActionRunListOptions,
-	): Promise<PortacallActionRunListResponse>;
-	approveActionRun(
-		actionRunId: string,
+		options?: PortacallToolRunListOptions,
+	): Promise<PortacallToolRunListResponse>;
+	approveToolRun(
+		toolRunId: string,
 		externalUserId: string,
-	): Promise<PortacallActionRunResolveResponse>;
-	denyActionRun(
-		actionRunId: string,
+	): Promise<PortacallToolRunResolveResponse>;
+	denyToolRun(
+		toolRunId: string,
 		externalUserId: string,
-	): Promise<PortacallActionRunResolveResponse>;
+	): Promise<PortacallToolRunResolveResponse>;
 	renameConversation(
 		conversationId: string,
 		externalUserId: string,
@@ -370,20 +370,20 @@ export function portacall(
 			currentConversationId = payload.conversation.id;
 			return payload;
 		},
-		async getActionRuns(
+		async getToolRuns(
 			conversationId: string,
 			externalUserId: string,
-			actionRunOptions: PortacallActionRunListOptions = {},
-		): Promise<PortacallActionRunListResponse> {
+			toolRunOptions: PortacallToolRunListOptions = {},
+		): Promise<PortacallToolRunListResponse> {
 			const normalizedConversationId = normalizeConversationId(conversationId);
 			const response = await request(
 				baseURL,
 				options,
-				`/conversations/${encodeURIComponent(normalizedConversationId)}/action-runs`,
+				`/conversations/${encodeURIComponent(normalizedConversationId)}/tool-runs`,
 				{
 					searchParams: {
 						externalUserId: normalizeRequiredExternalUserId(externalUserId),
-						status: actionRunOptions.status,
+						status: toolRunOptions.status,
 					},
 				},
 			);
@@ -392,30 +392,30 @@ export function portacall(
 				throw await createRequestError(response, "Portacall request failed.");
 			}
 
-			return (await response.json()) as PortacallActionRunListResponse;
+			return (await response.json()) as PortacallToolRunListResponse;
 		},
-		async approveActionRun(
-			actionRunId: string,
+		async approveToolRun(
+			toolRunId: string,
 			externalUserId: string,
-		): Promise<PortacallActionRunResolveResponse> {
-			const payload = await resolveActionRun(
+		): Promise<PortacallToolRunResolveResponse> {
+			const payload = await resolveToolRun(
 				baseURL,
 				options,
-				actionRunId,
+				toolRunId,
 				"approve",
 				externalUserId,
 			);
 			currentConversationId = payload.conversation.id;
 			return payload;
 		},
-		async denyActionRun(
-			actionRunId: string,
+		async denyToolRun(
+			toolRunId: string,
 			externalUserId: string,
-		): Promise<PortacallActionRunResolveResponse> {
-			const payload = await resolveActionRun(
+		): Promise<PortacallToolRunResolveResponse> {
+			const payload = await resolveToolRun(
 				baseURL,
 				options,
-				actionRunId,
+				toolRunId,
 				"deny",
 				externalUserId,
 			);
@@ -611,18 +611,18 @@ async function updateConversationArchiveState(
 	return payload.conversation;
 }
 
-async function resolveActionRun(
+async function resolveToolRun(
 	baseURL: string,
 	options: PortacallClientOptions,
-	actionRunId: string,
+	toolRunId: string,
 	decision: "approve" | "deny",
 	externalUserId: string,
-): Promise<PortacallActionRunResolveResponse> {
-	const normalizedActionRunId = normalizeActionRunId(actionRunId);
+): Promise<PortacallToolRunResolveResponse> {
+	const normalizedToolRunId = normalizeToolRunId(toolRunId);
 	const response = await request(
 		baseURL,
 		options,
-		`/action-runs/${encodeURIComponent(normalizedActionRunId)}/${decision}`,
+		`/tool-runs/${encodeURIComponent(normalizedToolRunId)}/${decision}`,
 		{
 			body: {
 				externalUserId: normalizeRequiredExternalUserId(externalUserId),
@@ -634,7 +634,7 @@ async function resolveActionRun(
 		throw await createRequestError(response, "Portacall request failed.");
 	}
 
-	return (await response.json()) as PortacallActionRunResolveResponse;
+	return (await response.json()) as PortacallToolRunResolveResponse;
 }
 
 async function request(
@@ -782,24 +782,24 @@ function isToolCallFailedEventData(value: Record<string, unknown>): value is {
 function isApprovalRequestedEventData(
 	value: Record<string, unknown>,
 ): value is {
-	actionRun: PortacallActionRunSummary;
+	toolRun: PortacallToolRunSummary;
 } {
-	return isActionRunSummary(value.actionRun);
+	return isToolRunSummary(value.toolRun);
 }
 
 function isApprovalResolvedEventData(value: Record<string, unknown>): value is {
 	decision: "approved" | "denied";
-	actionRun: PortacallActionRunSummary;
+	toolRun: PortacallToolRunSummary;
 } {
 	return (
 		(value.decision === "approved" || value.decision === "denied") &&
-		isActionRunSummary(value.actionRun)
+		isToolRunSummary(value.toolRun)
 	);
 }
 
-function isActionRunSummary(
+function isToolRunSummary(
 	value: unknown,
-): value is PortacallActionRunSummary {
+): value is PortacallToolRunSummary {
 	if (!isRecord(value)) {
 		return false;
 	}
@@ -815,13 +815,13 @@ function isActionRunSummary(
 		value.externalUserId.length > 0 &&
 		typeof value.toolCallId === "string" &&
 		value.toolCallId.length > 0 &&
-		typeof value.actionName === "string" &&
-		value.actionName.length > 0 &&
+		typeof value.toolName === "string" &&
+		value.toolName.length > 0 &&
 		typeof value.summary === "string" &&
 		isRecord(value.payload) &&
 		typeof value.payloadJson === "string" &&
-		isActionRunStatus(value.status) &&
-		isActionRunDecision(value.decision) &&
+		isToolRunStatus(value.status) &&
+		isToolRunDecision(value.decision) &&
 		(value.message === null || typeof value.message === "string") &&
 		(value.errorCode === null || typeof value.errorCode === "string") &&
 		(value.output === null || value.output !== undefined) &&
@@ -831,7 +831,7 @@ function isActionRunSummary(
 	);
 }
 
-function isActionRunStatus(value: unknown): value is PortacallActionRunStatus {
+function isToolRunStatus(value: unknown): value is PortacallToolRunStatus {
 	return (
 		value === "pending" ||
 		value === "approved" ||
@@ -842,9 +842,9 @@ function isActionRunStatus(value: unknown): value is PortacallActionRunStatus {
 	);
 }
 
-function isActionRunDecision(
+function isToolRunDecision(
 	value: unknown,
-): value is PortacallActionRunDecision {
+): value is PortacallToolRunDecision {
 	return value === "pending" || value === "approved" || value === "denied";
 }
 
@@ -889,10 +889,10 @@ function normalizeConversationId(
 	return value;
 }
 
-function normalizeActionRunId(actionRunId: string | null | undefined): string {
-	const value = actionRunId?.trim();
+function normalizeToolRunId(toolRunId: string | null | undefined): string {
+	const value = toolRunId?.trim();
 	if (!value) {
-		throw new Error("Action run ID is required.");
+		throw new Error("Tool run ID is required.");
 	}
 
 	return value;
